@@ -1,8 +1,8 @@
 """Transactional email via Resend.
 
-Password reset is the only sender today. Delivery is best-effort by design:
-a Resend outage must not turn "forgot password" into a 500 that confirms
-whether an address exists, so failures are logged and swallowed.
+Delivery is best-effort by design: a Resend outage must not turn signup or
+"forgot password" into a 500 that confirms whether an address exists, so
+failures are logged and swallowed.
 """
 
 import logging
@@ -47,3 +47,64 @@ async def send_password_reset(to_email: str, token: str) -> bool:
         logger.error("Resend rejected the send: %s %s", response.status_code, response.text)
         return False
     return True
+
+
+async def _send(to_email: str, subject: str, html: str, fallback: str) -> bool:
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY unset; %s for %s: %s", subject, to_email, fallback)
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+                json={
+                    "from": RESEND_FROM,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html,
+                },
+            )
+    except httpx.HTTPError:
+        logger.exception("Resend request failed for %s", to_email)
+        return False
+    if response.status_code >= 300:
+        logger.error("Resend rejected the send: %s %s", response.status_code, response.text)
+        return False
+    return True
+
+
+async def send_email_verification(to_email: str, token: str) -> bool:
+    url = f"{APP_URL}/verify-email?token={token}"
+    return await _send(
+        to_email,
+        "Verify your AIXDraw email",
+        (
+            "<p>Confirm this address to finish setting up your AIXDraw account. "
+            "This link expires in 24 hours.</p>"
+            f'<p><a href="{url}">Verify my email</a></p>'
+            "<p>Until it's confirmed, any workspace or drawing invites sent to "
+            "this address stay pending.</p>"
+        ),
+        url,
+    )
+
+
+async def send_existing_account_notice(to_email: str) -> bool:
+    """Sent when someone tries to sign up with an address that already has an
+    account. Signup answers identically either way, so this is what tells the
+    real owner that it happened."""
+    return await _send(
+        to_email,
+        "You already have an AIXDraw account",
+        (
+            "<p>Someone just tried to create an AIXDraw account with this "
+            "address, but one already exists.</p>"
+            f'<p>If that was you, <a href="{APP_URL}/login">sign in</a> instead, '
+            f'or <a href="{APP_URL}/login">reset your password</a> if you\'ve '
+            "forgotten it.</p>"
+            "<p>If it wasn't you, no action is needed — nothing about your "
+            "account has changed.</p>"
+        ),
+        f"{APP_URL}/login",
+    )

@@ -24,9 +24,12 @@ export type AuthUser = {
   email: string;
   username: string | null;
   avatar_url: string | null;
+  email_verified: boolean;
 };
 
 export type Session = { token: string; user: AuthUser };
+
+export type SignupResult = { ok: boolean; message: string };
 
 export const getStoredToken = (): string | null => {
   try {
@@ -113,14 +116,29 @@ const apiFetch = async (path: string, init: RequestInit = {}) => {
   return response.json();
 };
 
+/** Deliberately returns no session: the account can't be trusted with anything
+ * addressed to that email until the address is verified, and answering
+ * differently for a taken address would leak which emails have accounts. */
 export const signup = (
   email: string,
   password: string,
   username?: string,
-): Promise<Session> =>
+): Promise<SignupResult> =>
   apiFetch("/api/auth/signup", {
     method: "POST",
     body: JSON.stringify({ email, password, username }),
+  });
+
+export const verifyEmail = (token: string): Promise<Session> =>
+  apiFetch("/api/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+
+export const resendVerification = (email: string): Promise<SignupResult> =>
+  apiFetch("/api/auth/resend-verification", {
+    method: "POST",
+    body: JSON.stringify({ email }),
   });
 
 export const login = (email: string, password: string): Promise<Session> =>

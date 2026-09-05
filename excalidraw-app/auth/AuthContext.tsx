@@ -14,6 +14,7 @@ import {
   login as apiLogin,
   resetPassword as apiResetPassword,
   signup as apiSignup,
+  verifyEmail as apiVerifyEmail,
   clearStoredToken,
   getStoredToken,
   setActiveWorkspaceId,
@@ -26,7 +27,12 @@ type AuthState = {
   isLoaded: boolean;
   isSignedIn: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, username?: string) => Promise<void>;
+  signup: (
+    email: string,
+    password: string,
+    username?: string,
+  ) => Promise<string>;
+  verifyEmail: (token: string) => Promise<void>;
   logout: () => void;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
@@ -76,12 +82,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signup = useCallback(
     async (email: string, password: string, username?: string) => {
-      const session = await apiSignup(email, password, username);
-      setStoredToken(session.token);
-      setUser(session.user);
+      const result = await apiSignup(email, password, username);
+      return result.message;
     },
     [],
   );
+
+  const verifyEmail = useCallback(async (token: string) => {
+    const session = await apiVerifyEmail(token);
+    setStoredToken(session.token);
+    setUser(session.user);
+  }, []);
 
   const logout = useCallback(() => {
     clearStoredToken();
@@ -103,12 +114,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       isSignedIn: user !== null,
       login,
       signup,
+      verifyEmail,
       logout,
       forgotPassword: apiForgotPassword,
       resetPassword,
       changePassword: apiChangePassword,
     }),
-    [user, isLoaded, login, signup, logout, resetPassword],
+    [user, isLoaded, login, signup, verifyEmail, logout, resetPassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

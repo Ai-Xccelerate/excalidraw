@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from db import get_db
 from models import (
+    EmailVerificationToken,
     PasswordResetToken,
     PendingInvite,
     RoomMember,
@@ -28,6 +29,7 @@ if len(AUTH_SECRET) < 32:
 
 TOKEN_TTL = timedelta(days=int(os.environ.get("AUTH_TOKEN_TTL_DAYS", "30")))
 RESET_TTL = timedelta(hours=1)
+VERIFY_TTL = timedelta(hours=24)
 _ALGO = "HS256"
 
 # bcrypt silently truncates at 72 bytes, so a longer password would make every
@@ -110,12 +112,53 @@ def consume_reset_token(db: Session, raw: str) -> User | None:
     return db.get(User, row.user_id)
 
 
+# --------------------------------------------------------- verification tokens
+
+def invalidate_verification_tokens(db: Session, user: User) -> None:
+    """Burns every outstanding verification link for this account."""
+    db.query(EmailVerificationToken).filter(
+        EmailVerificationToken.user_id == user.id,
+        EmailVerificationToken.used_at.is_(None),
+    ).delete()
+    db.commit()
+
+
+def issue_verification_token(db: Session, user: User) -> str:
+    raw = secrets.token_urlsafe(32)
+    db.add(
+        EmailVerificationToken(
+            token_hash=hash_reset_token(raw),
+            user_id=user.id,
+            expires_at=datetime.now(timezone.utc) + VERIFY_TTL,
+        )
+    )
+    db.commit()
+    return raw
+
+
+def consume_verification_token(db: Session, raw: str) -> User | None:
+    row = db.get(EmailVerificationToken, hash_reset_token(raw))
+    if row is None or row.used_at is not None:
+        return None
+    expires_at = row.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        return None
+    row.used_at = datetime.now(timezone.utc)
+    return db.get(User, row.user_id)
+
+
 # ------------------------------------------------------------- invite claiming
 
 def claim_pending_invites(db: Session, user: User) -> None:
-    """Turns invites addressed to this email into real memberships. This is the
-    'user just appeared' moment that the Clerk user.created webhook used to be;
-    it runs on signup and is idempotent, so a re-invite still resolves."""
+    """Turns invites addressed to this email into real memberships.
+
+    Gated on a verified address: matching on the email string alone would let
+    anyone who guesses an invited address register it and inherit that
+    workspace's drawings without ever proving they control the inbox."""
+    if user.email_verified_at is None:
+        return
     email = normalize_email(user.email)
 
     for invite in db.query(PendingInvite).filter(PendingInvite.email == email).all():

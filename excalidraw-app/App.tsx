@@ -1413,18 +1413,25 @@ const RootView = ({ canvas }: { canvas: React.ReactNode }) => {
   const isBareRoot =
     pathname === "/" && !window.location.hash && !window.location.search;
 
+  // /login has to redirect too: signing in flips isSignedIn while the path is
+  // still /login, which would otherwise fall through to the canvas and strand
+  // the user one step short of the dashboard they just signed in to reach
   useEffect(() => {
-    if (isLoaded && isSignedIn && isBareRoot) {
+    if (isLoaded && isSignedIn && (isBareRoot || pathname === "/login")) {
       window.history.replaceState({}, APP_NAME, "/dashboard");
       setPathname("/dashboard");
     }
-  }, [isLoaded, isSignedIn, isBareRoot]);
+  }, [isLoaded, isSignedIn, isBareRoot, pathname]);
 
   // /reset-password carries a one-time token from the email link and must work
   // for a signed-out visitor, so it is checked before any auth gate
   if (pathname === "/reset-password") {
     const token = new URLSearchParams(window.location.search).get("token");
     return <AuthPage initialMode="reset" resetToken={token} />;
+  }
+  if (pathname === "/verify-email") {
+    const token = new URLSearchParams(window.location.search).get("token");
+    return <AuthPage initialMode="verify" verifyToken={token} />;
   }
   if (!isLoaded) {
     return null;

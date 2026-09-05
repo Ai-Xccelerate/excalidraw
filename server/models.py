@@ -26,8 +26,26 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     username: Mapped[str | None] = mapped_column(String)
     avatar_url: Mapped[str | None] = mapped_column(String)
+    # until this is set, the account has not proven control of the address, so
+    # invites addressed to that email must not convert into real access
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(default=_now)
     updated_at: Mapped[datetime] = mapped_column(default=_now, onupdate=_now)
+
+
+class EmailVerificationToken(Base):
+    """Single-use email-ownership proof. Same hashed-at-rest shape as
+    PasswordResetToken so a database leak can't be replayed."""
+
+    __tablename__ = "email_verification_tokens"
+
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
 class Workspace(Base):
