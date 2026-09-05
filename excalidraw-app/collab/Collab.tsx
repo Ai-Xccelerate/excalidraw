@@ -303,9 +303,7 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       if (this.isCollaborating() && stored?.elements) {
         this.handleRemoteSceneUpdate(
           this._reconcileElements(
-            toBrandedType<readonly RemoteExcalidrawElement[]>(
-              stored.elements,
-            ),
+            toBrandedType<readonly RemoteExcalidrawElement[]>(stored.elements),
           ),
         );
       }

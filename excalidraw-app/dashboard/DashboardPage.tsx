@@ -1,14 +1,7 @@
-import {
-  OrganizationSwitcher,
-  SignInButton,
-  SignedIn,
-  SignedOut,
-  UserButton,
-  useOrganization,
-  useUser,
-} from "@clerk/clerk-react";
 import clsx from "clsx";
 import { useEffect, useMemo, useRef, useState } from "react";
+
+import { SignedIn, SignedOut, useAuth } from "../auth/AuthContext";
 
 import {
   createCollection,
@@ -18,7 +11,10 @@ import {
   listCollections,
   listDrawings,
   listWorkspaces,
+  getActiveWorkspaceId,
+  setActiveWorkspaceId,
   moveDrawing,
+  type Workspace,
   renameCollection,
   renameDrawing,
   type CollectionRecord,
@@ -207,11 +203,19 @@ const DrawingCard = ({
 };
 
 const DashboardShell = () => {
-  const { user } = useUser();
-  const { organization } = useOrganization();
-  const orgId = organization?.id ?? null;
+  const { user, logout } = useAuth();
 
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaceId, setWorkspaceIdState] = useState<string | null>(
+    getActiveWorkspaceId(),
+  );
+
+  // the active workspace also travels on the X-Workspace-Id header, so it has
+  // to be persisted rather than kept in component state alone
+  const selectWorkspace = (id: string | null) => {
+    setActiveWorkspaceId(id);
+    setWorkspaceIdState(id);
+  };
   const [drawings, setDrawings] = useState<DrawingSummary[] | null>(null);
   const [collections, setCollections] = useState<CollectionRecord[]>([]);
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(
@@ -221,24 +225,26 @@ const DashboardShell = () => {
   const [newCollectionName, setNewCollectionName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  // resolve the active Clerk org -> our workspace row
   useEffect(() => {
     let cancelled = false;
-    if (!orgId) {
-      setWorkspaceId(null);
-      return;
-    }
     listWorkspaces()
       .then((wss) => {
-        if (!cancelled) {
-          setWorkspaceId(wss.find((w) => w.clerk_org_id === orgId)?.id ?? null);
+        if (cancelled) {
+          return;
+        }
+        setWorkspaces(wss);
+        // a stored id from a workspace the user was removed from would keep
+        // sending a header the API rejects, so fall back to personal
+        if (workspaceId && !wss.some((w) => w.id === workspaceId)) {
+          selectWorkspace(null);
         }
       })
       .catch((e) => setError(e.message));
     return () => {
       cancelled = true;
     };
-  }, [orgId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refresh = () => {
     listDrawings()
@@ -376,15 +382,23 @@ const DashboardShell = () => {
 
         <div className="aix-sidebar__bottom">
           <div className="aix-sidebar__workspace">
-            <OrganizationSwitcher
-              hidePersonal={false}
-              afterSelectOrganizationUrl="/dashboard"
-              afterSelectPersonalUrl="/dashboard"
-            />
+            <select
+              value={workspaceId ?? ""}
+              onChange={(e) => selectWorkspace(e.target.value || null)}
+            >
+              <option value="">Personal</option>
+              {workspaces.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="aix-sidebar__user">
-            <UserButton />
-            <span>{user?.fullName || user?.username || "Account"}</span>
+            <span>{user?.username || user?.email || "Account"}</span>
+            <button className="aix-signout-btn" onClick={logout}>
+              Sign out
+            </button>
           </div>
         </div>
       </aside>
@@ -527,9 +541,14 @@ export const DashboardPage = () => (
       <div className="aix-signedout">
         <img src={LOGO_LIGHT} alt="AIX Draw" />
         <p>Sign in to see your drawings and workspaces.</p>
-        <SignInButton mode="modal">
-          <button className="aix-start-btn">Sign in</button>
-        </SignInButton>
+        <button
+          className="aix-start-btn"
+          onClick={() => {
+            window.location.href = "/login";
+          }}
+        >
+          Sign in
+        </button>
         <a href="/">Continue without an account</a>
       </div>
     </SignedOut>

@@ -1,17 +1,16 @@
 import { Sidebar } from "@excalidraw/excalidraw";
-import { useOrganization } from "@clerk/clerk-react";
 import { useEffect, useMemo, useState } from "react";
+
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
 import { useAtomValue } from "../app-jotai";
 
 import {
   currentDrawingIdAtom,
+  getActiveWorkspaceId,
   listDrawings,
-  listWorkspaces,
   type DrawingSummary,
 } from "../data/backend";
-
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
 import "./AixFilesSidebar.scss";
 
@@ -21,29 +20,17 @@ export const AixFilesSidebar: React.FC<{
   excalidrawAPI: ExcalidrawImperativeAPI | null;
 }> = ({ excalidrawAPI }) => {
   const currentDrawingId = useAtomValue(currentDrawingIdAtom);
-  const { organization } = useOrganization();
-  const orgId = organization?.id ?? null;
   const [drawings, setDrawings] = useState<DrawingSummary[] | null>(null);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  // same scope the dashboard is showing, so the sidebar doesn't list drawings
+  // from a workspace the user isn't currently looking at
+  const workspaceId = getActiveWorkspaceId();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (!open || drawings) {
       return;
     }
-    // resolve the active Clerk org -> our workspace, then show only that
-    // workspace's drawings (personal when no active org), matching the dashboard
     const load = async () => {
-      let wsId: string | null = null;
-      if (orgId) {
-        try {
-          const wss = await listWorkspaces();
-          wsId = wss.find((w) => w.clerk_org_id === orgId)?.id ?? null;
-        } catch {
-          wsId = null;
-        }
-      }
-      setWorkspaceId(wsId);
       try {
         const items = await listDrawings();
         setDrawings(
@@ -58,7 +45,7 @@ export const AixFilesSidebar: React.FC<{
       }
     };
     load();
-  }, [open, drawings, orgId]);
+  }, [open, drawings]);
 
   const scopedDrawings = useMemo(
     () =>

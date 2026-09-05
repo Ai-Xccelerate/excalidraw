@@ -3,93 +3,160 @@ import { clearAppStateForDatabase } from "@excalidraw/excalidraw/appState";
 import type { OrderedExcalidrawElement } from "@excalidraw/element/types";
 import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
 
-import type { Socket } from "socket.io-client";
+import { atom } from "../app-jotai";
 
-import { atom, appJotaiStore } from "../app-jotai";
+import type { Socket } from "socket.io-client";
 
 import type { SyncableExcalidrawElement } from ".";
 
 const API_URL = import.meta.env.VITE_APP_API_URL as string;
+
+const TOKEN_KEY = "aixdraw-auth-token";
+const WORKSPACE_KEY = "aixdraw-active-workspace";
 
 /** the drawing currently open in the editor when not collaborating, if any;
  * used by App.tsx's onChange to autosave to the backend instead of/alongside
  * localStorage once a signed-in user has a drawing open */
 export const currentDrawingIdAtom = atom<string | null>(null);
 
-/** flips true when the backend answers 403 no_agent_access: the signed-in
- * user's org doesn't have AIXDraw enabled in AIX Core, or the user isn't
- * assigned. RootView renders a blocking screen instead of the app. */
-export const coreAccessDeniedAtom = atom(false);
+export type AuthUser = {
+  id: string;
+  email: string;
+  username: string | null;
+  avatar_url: string | null;
+};
 
-declare global {
-  interface Window {
-    Clerk?: {
-      loaded?: boolean;
-      load?: () => Promise<unknown>;
-      session?: { getToken: () => Promise<string | null> } | null;
-    };
-  }
-}
+export type Session = { token: string; user: AuthUser };
 
-const CLERK_ENABLED = !!import.meta.env.VITE_APP_CLERK_PUBLISHABLE_KEY;
-
-/** initializeScene() fires as soon as the canvas API is ready, which can be
- * before clerk-js has attached `window.Clerk` and loaded the session. Without
- * this wait, the first `getDrawing()` on a fresh `/d/:id` load goes out with no
- * token, 401s, and the app falls back to the localStorage scene — so every
- * board appears to open the same (last local) drawing. Bounded so an anonymous
- * or Clerk-down load still resolves to null rather than hanging init. */
-const waitForClerk = async (): Promise<void> => {
-  if (!CLERK_ENABLED) {
-    return;
-  }
-  const start = Date.now();
-  while (Date.now() - start < 5000) {
-    if (window.Clerk?.loaded) {
-      return;
-    }
-    if (window.Clerk && !window.Clerk.loaded && window.Clerk.load) {
-      try {
-        await window.Clerk.load();
-        return;
-      } catch {
-        // fall through to polling
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+export const getStoredToken = (): string | null => {
+  try {
+    return window.localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
   }
 };
 
-export const getAuthToken = async (): Promise<string | null> => {
-  await waitForClerk();
-  return (await window.Clerk?.session?.getToken()) ?? null;
+export const setStoredToken = (token: string): void => {
+  try {
+    window.localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    // private-mode storage failure: the session just won't survive a reload
+  }
 };
+
+export const clearStoredToken = (): void => {
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // nothing to do
+  }
+};
+
+export const getActiveWorkspaceId = (): string | null => {
+  try {
+    return window.localStorage.getItem(WORKSPACE_KEY);
+  } catch {
+    return null;
+  }
+};
+
+export const setActiveWorkspaceId = (id: string | null): void => {
+  try {
+    if (id) {
+      window.localStorage.setItem(WORKSPACE_KEY, id);
+    } else {
+      window.localStorage.removeItem(WORKSPACE_KEY);
+    }
+  } catch {
+    // nothing to do
+  }
+};
+
+/** The token is read synchronously from localStorage, so unlike the old Clerk
+ * flow there is nothing to wait for before the first request goes out. */
+export const getAuthToken = async (): Promise<string | null> =>
+  getStoredToken();
 
 const apiFetch = async (path: string, init: RequestInit = {}) => {
-  const token = await getAuthToken();
+  const token = getStoredToken();
+  const workspaceId = getActiveWorkspaceId();
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
       ...init.headers,
     },
   });
   if (!response.ok) {
     const body = await response.text();
-    if (response.status === 403) {
-      try {
-        if (JSON.parse(body)?.detail?.error === "no_agent_access") {
-          appJotaiStore.set(coreAccessDeniedAtom, true);
-        }
-      } catch {
-        // non-JSON 403 body, fall through to the generic error
-      }
+    // a rejected token is dead for every future request; drop it so the app
+    // falls back to the sign-in screen instead of retrying with it forever
+    if (response.status === 401 && token) {
+      clearStoredToken();
     }
-    throw new Error(`API ${path} failed (${response.status}): ${body}`);
+    let message = `API ${path} failed (${response.status})`;
+    try {
+      const detail = JSON.parse(body)?.detail;
+      if (typeof detail === "string") {
+        message = detail;
+      }
+    } catch {
+      // non-JSON error body; keep the generic message
+    }
+    throw new Error(message);
+  }
+  if (response.status === 204) {
+    return null;
   }
   return response.json();
 };
+
+export const signup = (
+  email: string,
+  password: string,
+  username?: string,
+): Promise<Session> =>
+  apiFetch("/api/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({ email, password, username }),
+  });
+
+export const login = (email: string, password: string): Promise<Session> =>
+  apiFetch("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+
+export const getMe = (): Promise<AuthUser> => apiFetch("/api/auth/me");
+
+export const forgotPassword = (email: string): Promise<void> =>
+  apiFetch("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+
+export const resetPassword = (
+  token: string,
+  password: string,
+): Promise<Session> =>
+  apiFetch("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
+
+export const changePassword = (
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> =>
+  apiFetch("/api/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
 
 export type DrawingSummary = {
   id: string;
@@ -116,8 +183,15 @@ export type DrawingRecord = {
 
 export type Workspace = {
   id: string;
-  clerk_org_id: string;
   name: string;
+  role: "admin" | "member";
+};
+
+export type WorkspaceMember = {
+  user_id: string | null;
+  email: string;
+  role: "admin" | "member";
+  pending: boolean;
 };
 
 export type CollectionRecord = {
@@ -144,7 +218,10 @@ export const getDrawing = (id: string): Promise<DrawingRecord> =>
 export const deleteDrawing = (id: string): Promise<void> =>
   apiFetch(`/api/drawings/${id}`, { method: "DELETE" });
 
-export const renameDrawing = (id: string, title: string): Promise<DrawingSummary> =>
+export const renameDrawing = (
+  id: string,
+  title: string,
+): Promise<DrawingSummary> =>
   apiFetch(`/api/drawings/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ title }),
@@ -189,6 +266,35 @@ export const moveDrawing = (
 
 export const listWorkspaces = (): Promise<Workspace[]> =>
   apiFetch("/api/workspaces");
+
+export const createWorkspace = (name: string): Promise<Workspace> =>
+  apiFetch("/api/workspaces", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+
+export const listWorkspaceMembers = (
+  workspaceId: string,
+): Promise<WorkspaceMember[]> =>
+  apiFetch(`/api/workspaces/${workspaceId}/members`);
+
+export const inviteWorkspaceMember = (
+  workspaceId: string,
+  email: string,
+  role: "admin" | "member" = "member",
+): Promise<{ ok: boolean; pending: boolean }> =>
+  apiFetch(`/api/workspaces/${workspaceId}/members`, {
+    method: "POST",
+    body: JSON.stringify({ email, role }),
+  });
+
+export const removeWorkspaceMember = (
+  workspaceId: string,
+  userId: string,
+): Promise<void> =>
+  apiFetch(`/api/workspaces/${workspaceId}/members/${userId}`, {
+    method: "DELETE",
+  });
 
 export const listCollections = (
   workspaceId: string | null,

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, String, Boolean, Integer, JSON, LargeBinary
+from sqlalchemy import DateTime, ForeignKey, String, Boolean, Integer, JSON, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,11 +12,18 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _new_id() -> str:
+    return uuid.uuid4().hex
+
+
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)  # Clerk user id
-    email: Mapped[str | None] = mapped_column(String, index=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    # citext isn't enabled on the box, so addresses are normalised to lowercase
+    # on the way in and every lookup goes through auth.normalize_email().
+    email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
     username: Mapped[str | None] = mapped_column(String)
     avatar_url: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(default=_now)
@@ -24,16 +31,58 @@ class User(Base):
 
 
 class Workspace(Base):
-    """A team workspace, backed 1:1 by a Clerk Organization. Personal (non-org)
-    drawings simply have workspace_id = NULL."""
+    """A team workspace. Membership lives in `workspace_members`; personal
+    (non-team) drawings simply have workspace_id = NULL."""
 
     __tablename__ = "workspaces"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    clerk_org_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String, default="Workspace")
     created_at: Mapped[datetime] = mapped_column(default=_now)
     updated_at: Mapped[datetime] = mapped_column(default=_now, onupdate=_now)
+
+
+class WorkspaceMember(Base):
+    """Replaces Clerk org membership. `admin` may invite and remove members."""
+
+    __tablename__ = "workspace_members"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    role: Mapped[str] = mapped_column(String, default="member")  # admin | member
+    joined_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class WorkspacePendingInvite(Base):
+    """Workspace invite for an address with no account yet. Converted into a
+    WorkspaceMember on that user's first sign-in (see auth.claim_pending_invites)."""
+
+    __tablename__ = "workspace_pending_invites"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    email: Mapped[str] = mapped_column(String, primary_key=True, index=True)
+    role: Mapped[str] = mapped_column(String, default="member")
+    invited_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class PasswordResetToken(Base):
+    """Single-use reset token. Only the SHA-256 hash is stored, so a database
+    leak can't be replayed against the reset endpoint."""
+
+    __tablename__ = "password_reset_tokens"
+
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # tz-aware on purpose: a naive column is written in the session's local
+    # timezone, so reading it back as UTC makes every token look hours expired
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
 class Collection(Base):

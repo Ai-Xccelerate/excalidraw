@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, load_only
 
-from auth import AuthContext, get_current_context, get_user_org_ids
+from auth import AuthContext, get_current_context, get_user_workspace_ids
 from db import get_db
-from models import Collection, Drawing, PendingInvite, RoomMember, User, Workspace
-from services import ensure_workspace
+from models import Collection, Drawing, PendingInvite, RoomMember, User
+from services import ensure_personal_workspace
 
 router = APIRouter(prefix="/api/drawings", tags=["drawings"])
 
@@ -100,11 +100,7 @@ def _summary(drawing: Drawing, role: str) -> DrawingSummary:
 
 
 async def _accessible_workspace_ids(db: Session, user_id: str) -> set[uuid.UUID]:
-    org_ids = await get_user_org_ids(user_id)
-    if not org_ids:
-        return set()
-    rows = db.query(Workspace.id).filter(Workspace.clerk_org_id.in_(org_ids)).all()
-    return {r[0] for r in rows}
+    return get_user_workspace_ids(db, user_id)
 
 
 def _role_for(drawing: Drawing, user_id: str, workspace_ids: set[uuid.UUID]) -> str | None:
@@ -195,10 +191,7 @@ async def create_drawing(
     ctx: AuthContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ):
-    workspace_id = None
-    if ctx.org_id:
-        workspace = await ensure_workspace(db, ctx.org_id)
-        workspace_id = workspace.id
+    workspace_id = ctx.workspace_id
     drawing = Drawing(
         owner_id=ctx.user_id,
         workspace_id=workspace_id,

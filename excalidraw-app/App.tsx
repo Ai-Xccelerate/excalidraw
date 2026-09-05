@@ -35,7 +35,7 @@ import {
   isDevEnv,
 } from "@excalidraw/common";
 import polyfill from "@excalidraw/excalidraw/polyfill";
-import { ClerkProvider, SignedIn, useAuth } from "@clerk/clerk-react";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadFromBlob } from "@excalidraw/excalidraw/data/blob";
 import { t } from "@excalidraw/excalidraw/i18n";
@@ -82,6 +82,9 @@ import type {
 import type { ResolutionType } from "@excalidraw/common/utility-types";
 import type { ResolvablePromise } from "@excalidraw/common/utils";
 
+import { AuthPage } from "./auth/AuthPage";
+import { AuthProvider, SignedIn, useAuth } from "./auth/AuthContext";
+
 import CustomStats from "./CustomStats";
 import {
   Provider,
@@ -122,15 +125,9 @@ import {
 } from "./data/localStorage";
 
 import { loadFilesFromFirebase } from "./data/firebase";
-import {
-  coreAccessDeniedAtom,
-  currentDrawingIdAtom,
-  getDrawing,
-  saveDrawing,
-} from "./data/backend";
+import { currentDrawingIdAtom, getDrawing, saveDrawing } from "./data/backend";
 import { DashboardPage } from "./dashboard/DashboardPage";
 import { AixFilesSidebar } from "./components/AixFilesSidebar";
-import { CoreAccessDenied } from "./components/CoreAccessDenied";
 import {
   LibraryIndexedDBAdapter,
   LibraryLocalStorageMigrationAdapter,
@@ -320,7 +317,9 @@ const initializeScene = async (opts: {
   };
 
   let roomLinkData = getCollaborationLinkData(window.location.href);
-  const drawingRouteMatch = window.location.pathname.match(/^\/d\/([a-zA-Z0-9-]+)$/);
+  const drawingRouteMatch = window.location.pathname.match(
+    /^\/d\/([a-zA-Z0-9-]+)$/,
+  );
   const isExternalScene = !!(id || jsonBackendMatch || roomLinkData);
 
   if (drawingRouteMatch && !roomLinkData) {
@@ -353,9 +352,12 @@ const initializeScene = async (opts: {
       console.error(error);
       // the drawing was deleted or isn't accessible — send the user to the
       // dashboard instead of silently dropping them onto the local scene at "/"
-      if (CLERK_PUBLISHABLE_KEY) {
+      if (AUTH_ENABLED) {
         window.location.replace("/dashboard");
-        return { scene: { elements: [], appState: {} }, isExternalScene: false };
+        return {
+          scene: { elements: [], appState: {} },
+          isExternalScene: false,
+        };
       }
       window.history.replaceState({}, APP_NAME, window.location.origin);
     }
@@ -1002,7 +1004,7 @@ const ExcalidrawWrapper = () => {
       })}
     >
       <div className="aix-topbar">
-        {CLERK_PUBLISHABLE_KEY ? (
+        {AUTH_ENABLED ? (
           <a
             href="/dashboard"
             className="aix-app-logo aix-app-logo--link"
@@ -1018,15 +1020,15 @@ const ExcalidrawWrapper = () => {
           </a>
         ) : (
           <img
-            src={editorTheme === "dark" ? "/aix-logo-dark.png" : "/aix-logo.png"}
+            src={
+              editorTheme === "dark" ? "/aix-logo-dark.png" : "/aix-logo.png"
+            }
             alt="AIX"
             className="aix-app-logo"
             draggable={false}
           />
         )}
-        {CLERK_PUBLISHABLE_KEY && (
-          <DrawingTitle excalidrawAPI={excalidrawAPI} />
-        )}
+        {AUTH_ENABLED && <DrawingTitle excalidrawAPI={excalidrawAPI} />}
       </div>
       <Excalidraw
         onChange={onChange}
@@ -1081,7 +1083,7 @@ const ExcalidrawWrapper = () => {
           theme={appTheme}
           refresh={() => forceRefresh((prev) => !prev)}
         />
-        {CLERK_PUBLISHABLE_KEY && (
+        {AUTH_ENABLED && (
           <SignedIn>
             <AixFilesSidebar excalidrawAPI={excalidrawAPI} />
           </SignedIn>
@@ -1368,9 +1370,9 @@ const DrawingTitle = ({
   );
 };
 
-const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_APP_CLERK_PUBLISHABLE_KEY as
-  | string
-  | undefined;
+/** Auth is now first-party (email + password against our own API), so it is
+ * always on; this keeps the previously Clerk-gated branches readable. */
+const AUTH_ENABLED = true;
 
 const ExcalidrawApp = () => {
   const isCloudExportWindow =
@@ -1385,22 +1387,14 @@ const ExcalidrawApp = () => {
     </ExcalidrawAPIProvider>
   );
 
-  if (!CLERK_PUBLISHABLE_KEY) {
-    return (
-      <TopErrorBoundary>
-        <Provider store={appJotaiStore}>{canvas}</Provider>
-      </TopErrorBoundary>
-    );
-  }
-
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+    <AuthProvider>
       <TopErrorBoundary>
         <Provider store={appJotaiStore}>
           <RootView canvas={canvas} />
         </Provider>
       </TopErrorBoundary>
-    </ClerkProvider>
+    </AuthProvider>
   );
 };
 
@@ -1408,7 +1402,6 @@ const ExcalidrawApp = () => {
  * direct drawing links (/d/:id), collab links, and signed-out visitors. */
 const RootView = ({ canvas }: { canvas: React.ReactNode }) => {
   const { isLoaded, isSignedIn } = useAuth();
-  const coreAccessDenied = useAtomValue(coreAccessDeniedAtom);
   const [pathname, setPathname] = useState(window.location.pathname);
 
   useEffect(() => {
@@ -1427,8 +1420,17 @@ const RootView = ({ canvas }: { canvas: React.ReactNode }) => {
     }
   }, [isLoaded, isSignedIn, isBareRoot]);
 
-  if (coreAccessDenied) {
-    return <CoreAccessDenied />;
+  // /reset-password carries a one-time token from the email link and must work
+  // for a signed-out visitor, so it is checked before any auth gate
+  if (pathname === "/reset-password") {
+    const token = new URLSearchParams(window.location.search).get("token");
+    return <AuthPage initialMode="reset" resetToken={token} />;
+  }
+  if (!isLoaded) {
+    return null;
+  }
+  if (!isSignedIn && (pathname === "/dashboard" || pathname === "/login")) {
+    return <AuthPage />;
   }
   if (pathname === "/dashboard") {
     return <DashboardPage />;

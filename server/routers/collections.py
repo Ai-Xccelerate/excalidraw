@@ -4,18 +4,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from auth import AuthContext, get_current_context, get_user_org_ids
+from auth import AuthContext, get_current_context, get_user_workspace_ids, normalize_email
 from db import get_db
-from models import Collection, Workspace
-from services import ensure_workspace
+from models import Collection, User, Workspace, WorkspaceMember, WorkspacePendingInvite
+from services import ensure_personal_workspace
 
 router = APIRouter(prefix="/api", tags=["workspaces"])
 
 
 class WorkspaceOut(BaseModel):
     id: uuid.UUID
-    clerk_org_id: str
     name: str
+    role: str = "member"
 
     class Config:
         from_attributes = True
@@ -39,11 +39,27 @@ class CollectionRename(BaseModel):
     name: str
 
 
+class WorkspaceCreate(BaseModel):
+    name: str = "Workspace"
+
+
+class WorkspaceMemberInvite(BaseModel):
+    email: str
+    role: str = "member"
+
+
+class WorkspaceMemberOut(BaseModel):
+    user_id: str | None = None
+    email: str
+    role: str
+    pending: bool
+
+
 async def _assert_workspace_access(db: Session, user_id: str, workspace_id: uuid.UUID) -> Workspace:
     workspace = db.get(Workspace, workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    if workspace.clerk_org_id not in await get_user_org_ids(user_id):
+    if workspace_id not in get_user_workspace_ids(db, user_id):
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
     return workspace
 
@@ -52,13 +68,19 @@ async def _assert_workspace_access(db: Session, user_id: str, workspace_id: uuid
 async def list_workspaces(
     ctx: AuthContext = Depends(get_current_context), db: Session = Depends(get_db)
 ):
-    org_ids = await get_user_org_ids(ctx.user_id)
-    # self-heal so the active org always resolves to a workspace row
-    if ctx.org_id and ctx.org_id in org_ids:
-        await ensure_workspace(db, ctx.org_id)
-    if not org_ids:
-        return []
-    return db.query(Workspace).filter(Workspace.clerk_org_id.in_(org_ids)).all()
+    ws_ids = get_user_workspace_ids(db, ctx.user_id)
+    if not ws_ids:
+        # every account gets one workspace on first look, so the picker is never empty
+        ensure_personal_workspace(db, ctx.user_id)
+        ws_ids = get_user_workspace_ids(db, ctx.user_id)
+    roles = {
+        m.workspace_id: m.role
+        for m in db.query(WorkspaceMember).filter(WorkspaceMember.user_id == ctx.user_id).all()
+    }
+    return [
+        WorkspaceOut(id=w.id, name=w.name, role=roles.get(w.id, "member"))
+        for w in db.query(Workspace).filter(Workspace.id.in_(ws_ids)).all()
+    ]
 
 
 @router.get("/collections", response_model=list[CollectionOut])
@@ -131,3 +153,129 @@ async def _get_collection_or_404(
     elif collection.owner_id != user_id:
         raise HTTPException(status_code=403, detail="Not your collection")
     return collection
+
+
+def _assert_workspace_admin(db: Session, user_id: str, workspace_id: uuid.UUID) -> Workspace:
+    workspace = db.get(Workspace, workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    member = (
+        db.query(WorkspaceMember)
+        .filter(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user_id,
+        )
+        .first()
+    )
+    if member is None or member.role != "admin":
+        raise HTTPException(status_code=403, detail="Only a workspace admin can do that")
+    return workspace
+
+
+@router.post("/workspaces", response_model=WorkspaceOut)
+async def create_workspace(
+    body: WorkspaceCreate,
+    ctx: AuthContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+):
+    workspace = Workspace(id=uuid.uuid4(), owner_id=ctx.user_id, name=body.name.strip() or "Workspace")
+    db.add(workspace)
+    db.flush()
+    db.add(WorkspaceMember(workspace_id=workspace.id, user_id=ctx.user_id, role="admin"))
+    db.commit()
+    db.refresh(workspace)
+    return WorkspaceOut(id=workspace.id, name=workspace.name, role="admin")
+
+
+@router.get("/workspaces/{workspace_id}/members", response_model=list[WorkspaceMemberOut])
+async def list_workspace_members(
+    workspace_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+):
+    await _assert_workspace_access(db, ctx.user_id, workspace_id)
+    result: list[WorkspaceMemberOut] = []
+    for m in (
+        db.query(WorkspaceMember).filter(WorkspaceMember.workspace_id == workspace_id).all()
+    ):
+        user = db.get(User, m.user_id)
+        result.append(
+            WorkspaceMemberOut(
+                user_id=m.user_id, email=user.email if user else "", role=m.role, pending=False
+            )
+        )
+    for p in (
+        db.query(WorkspacePendingInvite)
+        .filter(WorkspacePendingInvite.workspace_id == workspace_id)
+        .all()
+    ):
+        result.append(
+            WorkspaceMemberOut(user_id=None, email=p.email, role=p.role, pending=True)
+        )
+    return result
+
+
+@router.post("/workspaces/{workspace_id}/members")
+async def invite_workspace_member(
+    workspace_id: uuid.UUID,
+    body: WorkspaceMemberInvite,
+    ctx: AuthContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+):
+    _assert_workspace_admin(db, ctx.user_id, workspace_id)
+    role = body.role if body.role in ("admin", "member") else "member"
+    email = normalize_email(body.email)
+    invitee = db.query(User).filter(User.email == email).first()
+
+    if invitee:
+        existing = (
+            db.query(WorkspaceMember)
+            .filter(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == invitee.id,
+            )
+            .first()
+        )
+        if existing:
+            existing.role = role
+        else:
+            db.add(
+                WorkspaceMember(workspace_id=workspace_id, user_id=invitee.id, role=role)
+            )
+        db.commit()
+        return {"ok": True, "pending": False}
+
+    existing_pending = (
+        db.query(WorkspacePendingInvite)
+        .filter(
+            WorkspacePendingInvite.workspace_id == workspace_id,
+            WorkspacePendingInvite.email == email,
+        )
+        .first()
+    )
+    if existing_pending:
+        existing_pending.role = role
+    else:
+        db.add(
+            WorkspacePendingInvite(workspace_id=workspace_id, email=email, role=role)
+        )
+    db.commit()
+    return {"ok": True, "pending": True}
+
+
+@router.delete("/workspaces/{workspace_id}/members/{member_user_id}")
+async def remove_workspace_member(
+    workspace_id: uuid.UUID,
+    member_user_id: str,
+    ctx: AuthContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+):
+    workspace = _assert_workspace_admin(db, ctx.user_id, workspace_id)
+    if member_user_id == workspace.owner_id:
+        raise HTTPException(status_code=400, detail="The workspace owner can't be removed")
+    db.query(WorkspaceMember).filter(
+        WorkspaceMember.workspace_id == workspace_id,
+        WorkspaceMember.user_id == member_user_id,
+    ).delete()
+    db.commit()
+    return {"ok": True}

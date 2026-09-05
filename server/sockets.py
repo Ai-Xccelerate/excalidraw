@@ -1,8 +1,8 @@
 import socketio
 
-from auth import get_user_org_ids, verify_socket_token
+from auth import get_user_workspace_ids, verify_socket_token
 from db import SessionLocal
-from models import Drawing, RoomMember, Workspace
+from models import Drawing, RoomMember
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
@@ -34,8 +34,7 @@ async def _role_for_room(drawing_id: str, user_id: str) -> str | None:
         if member is not None:
             return member.role
         if drawing.workspace_id is not None:
-            workspace = db.get(Workspace, drawing.workspace_id)
-            if workspace and workspace.clerk_org_id in await get_user_org_ids(user_id):
+            if drawing.workspace_id in get_user_workspace_ids(db, user_id):
                 return "editor"
         return None
     finally:
