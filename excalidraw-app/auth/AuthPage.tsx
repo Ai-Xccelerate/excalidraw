@@ -120,7 +120,7 @@ export const AuthPage = ({
     <div className="aix-auth">
       <aside className="aix-auth__panel">
         <div className="aix-auth__brand">
-          <img src="/aix-logo-dark.png" alt="" aria-hidden="true" />
+          <img src="/aix-logo.png" alt="" aria-hidden="true" />
           <div>
             <strong>AIXDraw</strong>
             <span>AI Xccelerate</span>
