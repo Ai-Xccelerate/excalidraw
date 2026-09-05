@@ -8,9 +8,10 @@ import { MainMenu } from "@excalidraw/excalidraw/index";
 import React from "react";
 
 import { isDevEnv } from "@excalidraw/common";
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-react";
 
 import type { Theme } from "@excalidraw/element/types";
+
+import { SignedIn, SignedOut, useAuth } from "../auth/AuthContext";
 
 import { useAtomValue } from "../app-jotai";
 import {
@@ -22,7 +23,8 @@ import { LanguageList } from "../app-language/LanguageList";
 
 import { saveDebugState } from "./DebugCanvas";
 
-const CLERK_ENABLED = !!import.meta.env.VITE_APP_CLERK_PUBLISHABLE_KEY;
+/** first-party email + password auth is always available */
+const AUTH_ENABLED = true;
 
 const handleNewDrawing = async () => {
   try {
@@ -71,7 +73,7 @@ export const AppMainMenu: React.FC<{
       <MainMenu.DefaultItems.Help />
       <MainMenu.DefaultItems.ClearCanvas />
       <MainMenu.Separator />
-      {CLERK_ENABLED && (
+      {AUTH_ENABLED && (
         <>
           <SignedIn>
             <MainMenu.Item
@@ -92,14 +94,19 @@ export const AppMainMenu: React.FC<{
               </MainMenu.Item>
             )}
             <MainMenu.ItemCustom>
-              <UserButton afterSignOutUrl={window.location.origin} />
+              <AccountMenuItem />
             </MainMenu.ItemCustom>
           </SignedIn>
           <SignedOut>
             <MainMenu.ItemCustom>
-              <SignInButton mode="modal">
-                <button className="aix-sign-in-button">Sign in</button>
-              </SignInButton>
+              <button
+                className="aix-sign-in-button"
+                onClick={() => {
+                  window.location.href = "/login";
+                }}
+              >
+                Sign in
+              </button>
             </MainMenu.ItemCustom>
           </SignedOut>
         </>
@@ -131,3 +138,15 @@ export const AppMainMenu: React.FC<{
     </MainMenu>
   );
 });
+
+const AccountMenuItem = () => {
+  const { user, logout } = useAuth();
+  return (
+    <div className="aix-account-menu">
+      <span className="aix-account-menu__email">{user?.email}</span>
+      <button className="aix-sign-in-button" onClick={logout}>
+        Sign out
+      </button>
+    </div>
+  );
+};

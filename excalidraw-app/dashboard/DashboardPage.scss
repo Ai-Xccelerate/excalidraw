@@ -55,7 +55,7 @@ $hover: #f4f4f7;
   &__workspace {
     padding: 2px 6px;
 
-    // keep Clerk's OrganizationSwitcher compact — just the name + avatar
+    // keep the workspace picker compact
     .cl-organizationSwitcherTrigger {
       width: 100%;
       justify-content: flex-start;
@@ -530,5 +530,18 @@ $hover: #f4f4f7;
   .aix-start-btn {
     padding: 9px 14px;
     font-size: 13px;
+  }
+}
+
+.aix-signout-btn {
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--color-gray-60, #767676);
+  background: none;
+  border: none;
+  cursor: pointer;
+
+  &:hover {
+    color: #ec7200;
   }
 }

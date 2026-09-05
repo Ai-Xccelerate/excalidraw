@@ -28,7 +28,10 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { MakeBrand } from "@excalidraw/common/utility-types";
 
-import { DELETED_ELEMENT_TIMEOUT, FILE_UPLOAD_MAX_BYTES } from "../app_constants";
+import {
+  DELETED_ELEMENT_TIMEOUT,
+  FILE_UPLOAD_MAX_BYTES,
+} from "../app_constants";
 
 import { encodeFilesForUpload } from "./FileManager";
 import { saveFilesToFirebase } from "./firebase";

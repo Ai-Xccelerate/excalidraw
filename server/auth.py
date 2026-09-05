@@ -1,46 +1,75 @@
+import hashlib
 import os
-import time
+import secrets
+import uuid
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
-import httpx
+import bcrypt
 import jwt
 from fastapi import Depends, Header, HTTPException
-from jwt import PyJWKClient
 from sqlalchemy.orm import Session
 
-from core_access import check_core_access, socket_has_access
 from db import get_db
-from models import PendingInvite, RoomMember, User
+from models import (
+    PasswordResetToken,
+    PendingInvite,
+    RoomMember,
+    User,
+    WorkspaceMember,
+    WorkspacePendingInvite,
+)
 
-CLERK_JWKS_URL = os.environ["CLERK_JWKS_URL"]
-CLERK_SECRET_KEY = os.environ["CLERK_SECRET_KEY"]
+# Signing key for our own sessions. Refuse to boot without it rather than fall
+# back to a default, which would let anyone mint a valid token for any user.
+AUTH_SECRET = os.environ["AUTH_SECRET"]
+if len(AUTH_SECRET) < 32:
+    raise RuntimeError("AUTH_SECRET must be at least 32 characters")
 
-_jwk_client = PyJWKClient(CLERK_JWKS_URL)
+TOKEN_TTL = timedelta(days=int(os.environ.get("AUTH_TOKEN_TTL_DAYS", "30")))
+RESET_TTL = timedelta(hours=1)
+_ALGO = "HS256"
 
-# user_id -> (set of clerk org ids, fetched_at epoch). Short TTL so team access
-# reflects membership changes without a Clerk round-trip on every request.
-_ORG_CACHE: dict[str, tuple[set[str], float]] = {}
-_ORG_CACHE_TTL = 60.0
+# bcrypt silently truncates at 72 bytes, so a longer password would make every
+# suffix equivalent. Reject instead of quietly accepting a weaker secret.
+MAX_PASSWORD_BYTES = 72
+MIN_PASSWORD_LENGTH = 8
 
 
 @dataclass
 class AuthContext:
     user_id: str
-    org_id: str | None  # the active organization on the request's token, if any
+    workspace_id: uuid.UUID | None  # active workspace from the X-Workspace-Id header
 
 
-def _extract_org_id(claims: dict) -> str | None:
-    return claims.get("org_id") or (claims.get("o") or {}).get("id")
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def hash_password(password: str) -> str:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(422, f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+    if len(password.encode()) > MAX_PASSWORD_BYTES:
+        raise HTTPException(422, "Password is too long (max 72 bytes)")
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode()[:MAX_PASSWORD_BYTES], password_hash.encode())
+    except ValueError:
+        return False
+
+
+def create_access_token(user_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {"sub": user_id, "iat": now, "exp": now + TOKEN_TTL}, AUTH_SECRET, algorithm=_ALGO
+    )
 
 
 def _decode(token: str) -> dict:
-    signing_key = _jwk_client.get_signing_key_from_jwt(token)
-    return jwt.decode(
-        token,
-        signing_key.key,
-        algorithms=["RS256"],
-        options={"verify_aud": False},
-    )
+    return jwt.decode(token, AUTH_SECRET, algorithms=[_ALGO])
 
 
 def _extract_token(authorization: str | None) -> str | None:
@@ -49,56 +78,85 @@ def _extract_token(authorization: str | None) -> str | None:
     return authorization[len("Bearer ") :]
 
 
-async def _ensure_user_exists(db: Session, user_id: str) -> None:
-    """JIT-mirrors the `users` row on a user's first authed request (the
-    platform pattern: agent apps do NOT subscribe to Clerk webhooks; Core
-    owns the only webhook subscription). Without this, any endpoint that
-    writes owner_id/user_id as a foreign key fails for new accounts."""
-    if db.get(User, user_id):
-        return
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"https://api.clerk.com/v1/users/{user_id}",
-            headers={"Authorization": f"Bearer {CLERK_SECRET_KEY}"},
-            timeout=5.0,
-        )
-    response.raise_for_status()
-    data = response.json()
-    emails = data.get("email_addresses", [])
-    primary_email = next(
-        (e["email_address"] for e in emails if e.get("id") == data.get("primary_email_address_id")),
-        emails[0]["email_address"] if emails else None,
-    )
-    email = primary_email.strip().lower() if primary_email else None
+# ---------------------------------------------------------------- reset tokens
+
+def hash_reset_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def issue_reset_token(db: Session, user: User) -> str:
+    raw = secrets.token_urlsafe(32)
     db.add(
-        User(
-            id=user_id,
-            email=email,
-            username=data.get("username") or data.get("first_name"),
-            avatar_url=data.get("image_url"),
+        PasswordResetToken(
+            token_hash=hash_reset_token(raw),
+            user_id=user.id,
+            expires_at=datetime.now(timezone.utc) + RESET_TTL,
         )
     )
-    # convert any pending-by-email invites into real room memberships —
-    # this used to happen in the Clerk user.created webhook; the JIT create
-    # IS the "user just appeared" moment now
-    if email:
-        for invite in db.query(PendingInvite).filter(PendingInvite.email == email).all():
-            existing = (
-                db.query(RoomMember)
-                .filter(
-                    RoomMember.drawing_id == invite.drawing_id,
-                    RoomMember.user_id == user_id,
-                )
-                .first()
-            )
-            if not existing:
-                db.add(
-                    RoomMember(
-                        drawing_id=invite.drawing_id, user_id=user_id, role=invite.role
-                    )
-                )
-            db.delete(invite)
     db.commit()
+    return raw
+
+
+def consume_reset_token(db: Session, raw: str) -> User | None:
+    row = db.get(PasswordResetToken, hash_reset_token(raw))
+    if row is None or row.used_at is not None:
+        return None
+    expires_at = row.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        return None
+    row.used_at = datetime.now(timezone.utc)
+    return db.get(User, row.user_id)
+
+
+# ------------------------------------------------------------- invite claiming
+
+def claim_pending_invites(db: Session, user: User) -> None:
+    """Turns invites addressed to this email into real memberships. This is the
+    'user just appeared' moment that the Clerk user.created webhook used to be;
+    it runs on signup and is idempotent, so a re-invite still resolves."""
+    email = normalize_email(user.email)
+
+    for invite in db.query(PendingInvite).filter(PendingInvite.email == email).all():
+        existing = (
+            db.query(RoomMember)
+            .filter(RoomMember.drawing_id == invite.drawing_id, RoomMember.user_id == user.id)
+            .first()
+        )
+        if not existing:
+            db.add(RoomMember(drawing_id=invite.drawing_id, user_id=user.id, role=invite.role))
+        db.delete(invite)
+
+    for invite in (
+        db.query(WorkspacePendingInvite).filter(WorkspacePendingInvite.email == email).all()
+    ):
+        existing = (
+            db.query(WorkspaceMember)
+            .filter(
+                WorkspaceMember.workspace_id == invite.workspace_id,
+                WorkspaceMember.user_id == user.id,
+            )
+            .first()
+        )
+        if not existing:
+            db.add(
+                WorkspaceMember(
+                    workspace_id=invite.workspace_id, user_id=user.id, role=invite.role
+                )
+            )
+        db.delete(invite)
+
+    db.commit()
+
+
+# ---------------------------------------------------------------- dependencies
+
+def _user_id_from_token(token: str) -> str:
+    try:
+        return _decode(token)["sub"]
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
 
 
 async def get_current_user_id(
@@ -108,13 +166,10 @@ async def get_current_user_id(
     token = _extract_token(authorization)
     if not token:
         raise HTTPException(status_code=401, detail="Missing bearer token")
-    try:
-        claims = _decode(token)
-    except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
-    user_id = claims["sub"]
-    await check_core_access(user_id, token)  # entitlement gate, fail-closed
-    await _ensure_user_exists(db, user_id)
+    user_id = _user_id_from_token(token)
+    # a token outliving its user (deleted account) must not authorise anything
+    if not db.get(User, user_id):
+        raise HTTPException(status_code=401, detail="User no longer exists")
     return user_id
 
 
@@ -126,76 +181,38 @@ async def get_current_user_id_optional(
     if not token:
         return None
     try:
-        claims = _decode(token)
+        user_id = _decode(token)["sub"]
     except jwt.PyJWTError:
         return None
-    user_id = claims["sub"]
-    await _ensure_user_exists(db, user_id)
-    return user_id
+    return user_id if db.get(User, user_id) else None
 
 
 async def get_current_context(
     authorization: str | None = Header(default=None),
+    x_workspace_id: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> AuthContext:
-    token = _extract_token(authorization)
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing bearer token")
-    try:
-        claims = _decode(token)
-    except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
-    user_id = claims["sub"]
-    await check_core_access(user_id, token)  # entitlement gate, fail-closed
-    await _ensure_user_exists(db, user_id)
-    return AuthContext(user_id=user_id, org_id=_extract_org_id(claims))
+    user_id = await get_current_user_id(authorization=authorization, db=db)
+    workspace_id: uuid.UUID | None = None
+    if x_workspace_id:
+        try:
+            candidate = uuid.UUID(x_workspace_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid X-Workspace-Id") from None
+        # only honour it if they're actually a member, so the header can't be
+        # used to file drawings into someone else's workspace
+        if candidate in get_user_workspace_ids(db, user_id):
+            workspace_id = candidate
+    return AuthContext(user_id=user_id, workspace_id=workspace_id)
 
 
-async def get_user_org_ids(user_id: str) -> set[str]:
-    """All Clerk org ids the user belongs to, cached briefly. Used for access
-    control so a user reaches team drawings regardless of their active org."""
-    cached = _ORG_CACHE.get(user_id)
-    if cached and (time.time() - cached[1]) < _ORG_CACHE_TTL:
-        return cached[0]
-    org_ids: set[str] = set()
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"https://api.clerk.com/v1/users/{user_id}/organization_memberships",
-            headers={"Authorization": f"Bearer {CLERK_SECRET_KEY}"},
-            params={"limit": 100},
-            timeout=5.0,
-        )
-    if response.status_code != 200:
-        # don't cache a failure — that would lock the user out of their own team
-        # drawings for the whole TTL on a single transient Clerk blip
-        return cached[0] if cached else org_ids
-    data = response.json()
-    rows = data.get("data", data) if isinstance(data, dict) else data
-    for row in rows or []:
-        org = row.get("organization") or {}
-        if org.get("id"):
-            org_ids.add(org["id"])
-    _ORG_CACHE[user_id] = (org_ids, time.time())
-    return org_ids
-
-
-def invalidate_org_cache(user_id: str | None = None) -> None:
-    if user_id is None:
-        _ORG_CACHE.clear()
-    else:
-        _ORG_CACHE.pop(user_id, None)
-
-
-async def fetch_org_name(org_id: str) -> str:
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"https://api.clerk.com/v1/organizations/{org_id}",
-            headers={"Authorization": f"Bearer {CLERK_SECRET_KEY}"},
-            timeout=5.0,
-        )
-    if response.status_code == 200:
-        return response.json().get("name") or "Workspace"
-    return "Workspace"
+def get_user_workspace_ids(db: Session, user_id: str) -> set[uuid.UUID]:
+    rows = (
+        db.query(WorkspaceMember.workspace_id)
+        .filter(WorkspaceMember.user_id == user_id)
+        .all()
+    )
+    return {r[0] for r in rows}
 
 
 async def verify_socket_token(token: str | None, db: Session) -> str | None:
@@ -205,7 +222,4 @@ async def verify_socket_token(token: str | None, db: Session) -> str | None:
         user_id = _decode(token)["sub"]
     except jwt.PyJWTError:
         return None
-    if not await socket_has_access(user_id, token):
-        return None  # connect handler refuses unauthenticated connections
-    await _ensure_user_exists(db, user_id)
-    return user_id
+    return user_id if db.get(User, user_id) else None

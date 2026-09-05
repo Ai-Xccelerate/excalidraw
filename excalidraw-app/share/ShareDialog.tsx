@@ -218,7 +218,9 @@ const ActiveRoomDialog = ({
         </div>
       )}
       {members && members.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+        <div
+          style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}
+        >
           {members.map((m) => (
             <div
               key={m.user_id ?? m.email}

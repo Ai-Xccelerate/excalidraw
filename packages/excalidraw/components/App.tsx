@@ -8289,7 +8289,10 @@ class App extends React.Component<AppProps, AppState> {
 
     const onPointerMove = withBatchedUpdatesThrottled((ev: PointerEvent) => {
       if (!panning) {
-        if (Math.abs(ev.clientX - startX) <= 3 && Math.abs(ev.clientY - startY) <= 3) {
+        if (
+          Math.abs(ev.clientX - startX) <= 3 &&
+          Math.abs(ev.clientY - startY) <= 3
+        ) {
           return;
         }
         panning = true;
@@ -8331,7 +8334,9 @@ class App extends React.Component<AppProps, AppState> {
       }),
     );
     window.addEventListener(EVENT.BLUR, teardown);
-    window.addEventListener(EVENT.POINTER_MOVE, onPointerMove, { passive: true });
+    window.addEventListener(EVENT.POINTER_MOVE, onPointerMove, {
+      passive: true,
+    });
     window.addEventListener(EVENT.POINTER_UP, teardown);
     return true;
   };
@@ -12853,8 +12858,7 @@ class App extends React.Component<AppProps, AppState> {
       // native Excalidraw behavior. `inputDeviceMode` forces one scheme; "auto"
       // classifies each gesture.
       const mode = this.state.inputDeviceMode;
-      const device =
-        mode === "auto" ? this.classifyWheelDevice(event) : mode;
+      const device = mode === "auto" ? this.classifyWheelDevice(event) : mode;
 
       const zoomFromWheel = () => {
         const sign = Math.sign(deltaY);
