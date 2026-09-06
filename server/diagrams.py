@@ -96,7 +96,14 @@ def _base(defaults: dict, **overrides: Any) -> dict:
 def _wrap(label: str, max_chars: int) -> list[str]:
     lines: list[str] = []
     for paragraph in label.split("\n"):
-        words = paragraph.split()
+        # a token with no spaces (a URL, an id) can never fit by wrapping, so
+        # it is broken rather than left to overflow the box
+        words: list[str] = []
+        for word in paragraph.split():
+            while len(word) > max_chars:
+                words.append(word[:max_chars])
+                word = word[max_chars:]
+            words.append(word)
         if not words:
             lines.append("")
             continue
@@ -391,7 +398,11 @@ def build_flowchart(
     for edge in edges:
         start = containers[edge["from"]]
         end = containers[edge["to"]]
-        arrow = _arrow(start, end, defaults, horizontal, edge)
+        arrow = (
+            _self_loop(start, defaults, edge)
+            if edge["from"] == edge["to"]
+            else _arrow(start, end, defaults, horizontal, edge)
+        )
         start["boundElements"] = list(start["boundElements"]) + [
             {"id": arrow["id"], "type": "arrow"}
         ]
@@ -461,6 +472,43 @@ def _arrow(
         startBinding={"elementId": start["id"], "fixedPoint": start_ratio, "mode": "orbit"},
         endBinding={"elementId": end["id"], "fixedPoint": end_ratio, "mode": "orbit"},
         backgroundColor="transparent",
+    )
+
+
+def _self_loop(element: dict, defaults: dict, edge: dict) -> dict:
+    """A node pointing at itself. Drawn as a loop out of the right side and
+    back into the top — a straight arrow between the same two points would
+    just cut through the box."""
+    reach = 44.0
+    x1 = element["x"] + element["width"]
+    y1 = element["y"] + element["height"] / 2
+    top_x = element["x"] + element["width"] / 2
+    top_y = element["y"]
+
+    return _base(
+        defaults,
+        type="arrow",
+        x=float(x1),
+        y=float(y1),
+        width=float(x1 + reach - top_x),
+        height=float(y1 - top_y + reach),
+        points=[
+            [0, 0],
+            [reach, 0],
+            [reach, -(y1 - top_y) - reach],
+            [top_x - x1, -(y1 - top_y) - reach],
+            [top_x - x1, -(y1 - top_y)],
+        ],
+        lastCommittedPoint=None,
+        startArrowhead=None,
+        endArrowhead="arrow" if edge.get("head_end", True) else None,
+        roundness={"type": 2},
+        elbowed=False,
+        fixedSegments=None,
+        startBinding={"elementId": element["id"], "fixedPoint": [1, 0.5], "mode": "orbit"},
+        endBinding={"elementId": element["id"], "fixedPoint": [0.5, 0], "mode": "orbit"},
+        backgroundColor="transparent",
+        strokeStyle="dashed" if edge.get("dashed") else defaults["stroke_style"],
     )
 
 

@@ -238,6 +238,25 @@ ok &= check("the hyphenated label is intact",
             {"Cross-encoder reranker", "RUNG 3 - START HERE"} <= hyphen_labels,
             sorted(hyphen_labels))
 
+# 9c-2. input that would otherwise draw something broken
+loop = rpc("tools/call", {"name": "create_mermaid_diagram", "arguments": {
+    "title": "Retry", "mermaid": "flowchart TD\n A[Retry] --> A"}})["result"]
+loop_id = loop["content"][0]["text"].rsplit("/d/", 1)[1].split()[0].strip()
+db.expire_all()
+loop_arrow = next(e for e in db.get(Drawing, uuid.UUID(loop_id)).elements
+                  if e["type"] == "arrow")
+ok &= check("a self-loop goes around the node, not through it",
+            len(loop_arrow["points"]) > 2, loop_arrow["points"])
+
+wide_label = rpc("tools/call", {"name": "create_mermaid_diagram", "arguments": {
+    "title": "Long", "mermaid": "flowchart TD\n A[" + "x" * 400 + "] --> B[ok]"}})["result"]
+wide_id = wide_label["content"][0]["text"].rsplit("/d/", 1)[1].split()[0].strip()
+db.expire_all()
+wide_box = next(e for e in db.get(Drawing, uuid.UUID(wide_id)).elements
+                if e["type"] == "rectangle")
+ok &= check("an unbreakable label is wrapped, not left overflowing",
+            wide_box["height"] > 300, wide_box["height"])
+
 # 9d. children line up under their parents rather than stacking in a column
 tree = rpc("tools/call", {"name": "create_flowchart", "arguments": {
     "title": "Layout", "direction": "down",
