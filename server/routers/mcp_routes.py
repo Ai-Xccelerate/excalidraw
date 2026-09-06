@@ -116,9 +116,12 @@ TOOLS = [
         "name": "create_mermaid_diagram",
         "title": "Create a diagram from mermaid",
         "description": (
-            "Render a mermaid flowchart (`flowchart TD` / `graph LR`, including node "
-            "shapes and edge labels) as a new AIXDraw drawing. Subgraphs and non-"
-            "flowchart mermaid diagrams are not supported yet."
+            "Render a mermaid flowchart (`flowchart TD` / `graph LR`) as a new "
+            "AIXDraw drawing. Handles every node shape, `<br/>` line breaks in "
+            "labels, edge labels, dotted and thick links, and classDef/class/style "
+            "colouring. Subgraphs are flattened — the nodes come through but are "
+            "not boxed together. Other mermaid diagram types (sequence, class, "
+            "gantt) are not supported; compose those with create_flowchart."
         ),
         "inputSchema": {
             "type": "object",
@@ -249,17 +252,23 @@ def _call_tool(name: str, args: dict, ctx: McpContext, db: Session) -> dict:
     if name == "create_mermaid_diagram":
         ctx.require("drawings:write")
         try:
-            nodes, edges, direction = parse_mermaid(str(args.get("mermaid") or ""))
+            nodes, edges, direction, notes = parse_mermaid(
+                str(args.get("mermaid") or "")
+            )
         except MermaidError as exc:
             return _error(str(exc))
         elements = build_flowchart(
             nodes, edges, direction, _user_defaults(db, ctx.user_id)
         )
         drawing = _save(db, ctx, str(args.get("title") or "Diagram"), elements)
-        return _text(
+        body = [
             f"Created '{drawing.title}' with {len(nodes)} nodes and {len(edges)} "
             f"connections: {_drawing_url(drawing)}"
-        )
+        ]
+        # anything that could not be represented is said out loud, so the
+        # agent isn't left believing the canvas matches the source
+        body.extend(notes)
+        return _text("\n".join(body))
 
     if name == "create_drawing":
         ctx.require("drawings:write")

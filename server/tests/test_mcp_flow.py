@@ -198,6 +198,42 @@ flow = rpc("tools/call", {"name": "create_flowchart", "arguments": {
     "direction": "right"}})["result"]
 ok &= check("flowchart tool draws", "Created 'Deal flow'" in flow["content"][0]["text"], flow)
 
+# 9b. the mermaid the agent actually sent us, with the pieces that used to be
+# mangled: stadium brackets, <br/> line breaks, link styles and classDef colour
+rich = rpc("tools/call", {"name": "create_mermaid_diagram", "arguments": {
+    "title": "RAG decision tree", "mermaid": """flowchart TD
+    A([Your corpus]) --> B{Small and stable?}
+    B -->|yes| C[RUNG 0<br/>Long context]
+    B -->|no| D[[RUNG 1<br/>Agent + tools]]
+    D -.-> E((Rerank))
+    E --- F[/Eval passing?/]
+    F ==> G([SHIP IT])
+    classDef done fill:#d3f9d8,stroke:#2b8a3e
+    class G done"""}})["result"]
+ok &= check("the rich mermaid renders", not rich["isError"], rich)
+rich_id = rich["content"][0]["text"].rsplit("/d/", 1)[1].split()[0].strip()
+db.expire_all()
+rich_scene = db.get(Drawing, uuid.UUID(rich_id)).elements
+labels = {e["text"] for e in rich_scene if e["type"] == "text"}
+ok &= check("stadium brackets do not leak into the label", "Your corpus" in labels, sorted(labels))
+ok &= check("<br/> becomes a real line break", "RUNG 0\nLong context" in labels, sorted(labels))
+ok &= check("classDef colours the node it names",
+            any(e["type"] in ("rectangle", "ellipse") and e["backgroundColor"] == "#d3f9d8"
+                for e in rich_scene), None)
+ok &= check("a dotted link is drawn dotted",
+            any(e["type"] == "arrow" and e["strokeStyle"] == "dashed" for e in rich_scene), None)
+ok &= check("an undirected --- link has no arrowhead",
+            any(e["type"] == "arrow" and e["endArrowhead"] is None for e in rich_scene), None)
+
+flattened = rpc("tools/call", {"name": "create_mermaid_diagram", "arguments": {
+    "title": "Pipeline", "mermaid": """flowchart LR
+    subgraph Ingest
+      A[Load] --> B[Chunk]
+    end
+    B --> C[Answer]"""}})["result"]
+ok &= check("a flattened subgraph is reported, not hidden",
+            "flattened" in flattened["content"][0]["text"], flattened)
+
 bad_mermaid = rpc("tools/call", {"name": "create_mermaid_diagram", "arguments": {
     "title": "x", "mermaid": "sequenceDiagram\n A->>B: hi"}})["result"]
 ok &= check("an unsupported diagram type is reported, not half-drawn",
