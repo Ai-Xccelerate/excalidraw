@@ -11,6 +11,7 @@ database nor an intercepted redirect yields a usable session.
 
 import base64
 import hashlib
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -29,31 +30,61 @@ PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", "").rstrip("/")
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "").rstrip("/")
 
 
+def _allowed_api_hosts() -> set[str]:
+    """Hosts we will answer for when PUBLIC_API_URL is unset.
+
+    Railway injects its own domain, so a deployment still describes itself
+    correctly without configuration, and localhost covers development."""
+    candidates = {
+        urlparse(PUBLIC_API_URL).netloc,
+        os.environ.get("RAILWAY_PUBLIC_DOMAIN", ""),
+        *(h.strip() for h in os.environ.get("ALLOWED_API_HOSTS", "").split(",")),
+        "localhost:8000",
+        "127.0.0.1:8000",
+    }
+    return {host for host in candidates if host}
+
+
+ALLOWED_API_HOSTS = _allowed_api_hosts()
+
+
 def public_api_url(request: Request) -> str:
-    """The origin clients should call us on. Configuration wins; otherwise it
-    is read off the request so an unset variable degrades to the host the
-    caller already reached rather than to a bare path."""
+    """The origin clients should call us on, and the OAuth issuer they check
+    the metadata against.
+
+    Configuration wins. Falling back to the request keeps an unconfigured
+    deployment describing itself correctly, but Host and X-Forwarded-Host are
+    set by whoever is calling, so the derived host is only used when it is one
+    we recognise — otherwise a crafted Host header could hand a client an
+    issuer and token endpoint on someone else's server."""
     if PUBLIC_API_URL:
         return PUBLIC_API_URL
-    # the proxy terminates TLS, so the raw URL says http
-    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+
     host = (
         request.headers.get("x-forwarded-host")
         or request.headers.get("host")
         or request.url.netloc
     )
+    if host not in ALLOWED_API_HOSTS:
+        logger.warning(
+            "refusing to derive the public URL from unrecognised host %r; "
+            "set PUBLIC_API_URL",
+            host,
+        )
+        return ""
+
+    # the proxy terminates TLS, so the request's own scheme says http
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     return f"{scheme}://{host}".rstrip("/")
 
 
-def public_app_url(request: Request | None = None) -> str:
-    """Where the browser-facing app lives. The app calls this API from its own
-    origin, so that header is a usable fallback — but an agent's request
-    carries no such origin, which is why the variable is still the real
-    answer."""
-    if PUBLIC_APP_URL:
-        return PUBLIC_APP_URL
-    origin = request.headers.get("origin") if request is not None else None
-    return (origin or "").rstrip("/")
+def public_app_url() -> str:
+    """Where the browser-facing app lives. Configuration only: the agent
+    requests that need this carry nothing to derive it from, and a request
+    header would be the caller's to choose."""
+    return PUBLIC_APP_URL
+
+logger = logging.getLogger(__name__)
 
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 REFRESH_TOKEN_TTL = timedelta(days=60)

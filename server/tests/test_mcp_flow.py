@@ -54,6 +54,7 @@ ok &= check("resource metadata points at /mcp", res_meta["resource"].endswith("/
 import oauth as oauth_module
 configured = oauth_module.PUBLIC_API_URL
 oauth_module.PUBLIC_API_URL = ""
+oauth_module.ALLOWED_API_HOSTS = {"api.example.com"}
 derived = client.get("/.well-known/oauth-protected-resource",
                      headers={"host": "api.example.com", "x-forwarded-proto": "https"}).json()
 ok &= check("discovery falls back to the requested host",
@@ -62,7 +63,19 @@ derived_settings = client.get("/api/settings", headers={**AUTH, "host": "api.exa
                                                         "x-forwarded-proto": "https"}).json()
 ok &= check("settings shows an absolute MCP url without configuration",
             derived_settings["mcp_endpoint"] == "https://api.example.com/mcp", derived_settings)
+
+# a Host header is set by whoever is calling, so an unrecognised one must not
+# become the issuer clients trust
+poisoned = client.get("/.well-known/oauth-authorization-server",
+                      headers={"host": "evil.example", "x-forwarded-proto": "https"}).json()
+ok &= check("a spoofed Host cannot poison the issuer", poisoned["issuer"] == "", poisoned)
+poisoned_fwd = client.get("/.well-known/oauth-authorization-server",
+                          headers={"host": "api.example.com",
+                                   "x-forwarded-host": "evil.example"}).json()
+ok &= check("a spoofed X-Forwarded-Host cannot poison the issuer",
+            poisoned_fwd["issuer"] == "", poisoned_fwd)
 oauth_module.PUBLIC_API_URL = configured
+oauth_module.ALLOWED_API_HOSTS = oauth_module._allowed_api_hosts()
 
 # 2. unauthenticated /mcp challenges with where to authorize
 unauth = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
