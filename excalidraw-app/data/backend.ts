@@ -47,6 +47,11 @@ export const setStoredToken = (token: string): void => {
   }
 };
 
+/** Fires when the server rejects the stored token. AuthContext listens so the
+ * in-memory user is dropped too — clearing storage alone left the app rendering
+ * as signed-in until the next reload. */
+export const SESSION_EXPIRED_EVENT = "aixdraw:session-expired";
+
 export const clearStoredToken = (): void => {
   try {
     window.localStorage.removeItem(TOKEN_KEY);
@@ -98,6 +103,7 @@ const apiFetch = async (path: string, init: RequestInit = {}) => {
     // falls back to the sign-in screen instead of retrying with it forever
     if (response.status === 401 && token) {
       clearStoredToken();
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
     let message = `API ${path} failed (${response.status})`;
     try {
@@ -164,10 +170,12 @@ export const resetPassword = (
     body: JSON.stringify({ token, password }),
   });
 
+/** Returns a replacement token: changing the password invalidates every
+ * session issued before it, including the one making this call. */
 export const changePassword = (
   currentPassword: string,
   newPassword: string,
-): Promise<void> =>
+): Promise<{ ok: boolean; token: string }> =>
   apiFetch("/api/auth/change-password", {
     method: "POST",
     body: JSON.stringify({

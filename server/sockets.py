@@ -1,3 +1,5 @@
+import time
+
 import socketio
 
 from auth import get_user_workspace_ids, verify_socket_token
@@ -8,6 +10,13 @@ sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
 # socket id -> {"user_id": str, "room_id": str | None, "username": str}
 _connections: dict[str, dict] = {}
+
+# Roles were previously resolved once at join-room and trusted for the life of
+# the connection, so removing a member or demoting an editor to viewer left
+# them editing until they happened to disconnect. Re-resolve on a short TTL:
+# frequent enough that a revocation lands in seconds, cheap enough that pointer
+# traffic doesn't hit the database on every event.
+_ROLE_TTL_SECONDS = 5.0
 
 
 # subtypes that only describe where a user is looking/pointing. They carry no
@@ -41,6 +50,19 @@ async def _role_for_room(drawing_id: str, user_id: str) -> str | None:
         db.close()
 
 
+async def _current_role(conn: dict) -> str | None:
+    """Cached role for the connection's room, refreshed every few seconds."""
+    now = time.monotonic()
+    if conn.get("role_checked_at") is not None and (
+        now - conn["role_checked_at"] < _ROLE_TTL_SECONDS
+    ):
+        return conn.get("role")
+    role = await _role_for_room(conn["room_id"], conn["user_id"])
+    conn["role"] = role
+    conn["role_checked_at"] = now
+    return role
+
+
 def _may_broadcast(role: str | None, payload) -> bool:
     if role in ("owner", "editor"):
         return True
@@ -61,7 +83,13 @@ async def connect(sid, environ, auth):
         db.close()
     if not user_id:
         raise socketio.exceptions.ConnectionRefusedError("Invalid or missing auth token")
-    _connections[sid] = {"user_id": user_id, "room_id": None, "role": None, "username": (auth or {}).get("username", "Anonymous")}
+    _connections[sid] = {
+        "user_id": user_id,
+        "room_id": None,
+        "role": None,
+        "role_checked_at": None,
+        "username": (auth or {}).get("username", "Anonymous"),
+    }
 
 
 @sio.event
@@ -97,6 +125,7 @@ async def join_room(sid, room_id):
     existing_in_room = _roster(room_id)
     conn["room_id"] = room_id
     conn["role"] = role
+    conn["role_checked_at"] = time.monotonic()
     await sio.enter_room(sid, room_id)
 
     if existing_in_room:
@@ -112,7 +141,7 @@ async def server_broadcast(sid, room_id, payload, iv=None):
     conn = _connections.get(sid)
     if not conn or conn["room_id"] != room_id:
         return
-    if not _may_broadcast(conn.get("role"), payload):
+    if not _may_broadcast(await _current_role(conn), payload):
         return
     await sio.emit("client-broadcast", payload, room=room_id, skip_sid=sid)
 
@@ -122,7 +151,7 @@ async def server_volatile_broadcast(sid, room_id, payload, iv=None):
     conn = _connections.get(sid)
     if not conn or conn["room_id"] != room_id:
         return
-    if not _may_broadcast(conn.get("role"), payload):
+    if not _may_broadcast(await _current_role(conn), payload):
         return
     await sio.emit("client-broadcast", payload, room=room_id, skip_sid=sid)
 

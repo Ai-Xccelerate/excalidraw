@@ -1,5 +1,4 @@
 import asyncio
-import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from auth import (
     AuthContext,
+    bump_token_version,
     claim_pending_invites,
     consume_reset_token,
     consume_verification_token,
@@ -87,6 +87,13 @@ def _find_by_email(db: Session, email: str) -> User | None:
     return db.query(User).filter(User.email == normalize_email(email)).first()
 
 
+# One fixed hash, computed once at import. The unknown-email branch verifies
+# against this so it does exactly one bcrypt comparison, matching the real
+# branch; generating a fresh hash per request did roughly twice the work and
+# leaked account existence through response time.
+_DUMMY_PASSWORD_HASH = hash_password("timing-equalisation-placeholder")
+
+
 SIGNUP_MESSAGE = (
     "Check your email to confirm your address, then sign in."
 )
@@ -112,6 +119,9 @@ async def signup(body: SignupRequest, db: Session = Depends(get_db)):
                 (body.username or "").strip() or existing.username or email.split("@")[0]
             )
             db.commit()
+            # the previous holder may already have signed in (login works before
+            # verification), so their token has to die with their password
+            bump_token_version(db, existing)
             invalidate_verification_tokens(db, existing)
             await send_email_verification(
                 email, issue_verification_token(db, existing)
@@ -144,10 +154,14 @@ async def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)):
     if user.email_verified_at is None:
         user.email_verified_at = datetime.now(timezone.utc)
     db.commit()
+    # verification is the moment the address is proven; evict every session
+    # minted before it so a pre-verification holder can't ride into the
+    # verified account, then issue a fresh one below
+    bump_token_version(db, user)
     db.refresh(user)
     # only now is it safe to hand over anything addressed to this email
     claim_pending_invites(db, user)
-    return SessionOut(token=create_access_token(user.id), user=UserOut.of(user))
+    return SessionOut(token=create_access_token(user), user=UserOut.of(user))
 
 
 @router.post("/resend-verification")
@@ -168,14 +182,14 @@ async def login(body: LoginRequest, db: Session = Depends(get_db)):
     # compare against a dummy hash when the address is unknown so response time
     # doesn't reveal which addresses have accounts
     if user is None:
-        verify_password(body.password, hash_password(secrets.token_urlsafe(16)))
+        verify_password(body.password, _DUMMY_PASSWORD_HASH)
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     if not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     # no-op while the address is unverified; picks the invites up on the first
     # sign-in after verification
     claim_pending_invites(db, user)
-    return SessionOut(token=create_access_token(user.id), user=UserOut.of(user))
+    return SessionOut(token=create_access_token(user), user=UserOut.of(user))
 
 
 @router.get("/me", response_model=UserOut)
@@ -210,9 +224,12 @@ async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_d
     if user.email_verified_at is None:
         user.email_verified_at = datetime.now(timezone.utc)
     db.commit()
+    # a reset is how you evict someone who has your password; that only works
+    # if it also kills the sessions they already hold
+    bump_token_version(db, user)
     db.refresh(user)
     claim_pending_invites(db, user)
-    return SessionOut(token=create_access_token(user.id), user=UserOut.of(user))
+    return SessionOut(token=create_access_token(user), user=UserOut.of(user))
 
 
 @router.post("/change-password")
@@ -226,4 +243,5 @@ async def change_password(
         raise HTTPException(status_code=403, detail="Current password is incorrect")
     user.password_hash = hash_password(body.new_password)
     db.commit()
-    return {"ok": True}
+    bump_token_version(db, user)
+    return {"ok": True, "token": create_access_token(user)}

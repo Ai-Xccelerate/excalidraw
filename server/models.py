@@ -31,6 +31,10 @@ class User(Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # bumped whenever the account's ownership changes hands (password set,
+    # reset, or email verified). Tokens carry the value they were minted with,
+    # so bumping it invalidates every session issued before that moment.
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(default=_now)
     updated_at: Mapped[datetime] = mapped_column(default=_now, onupdate=_now)
 

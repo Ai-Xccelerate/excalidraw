@@ -227,6 +227,13 @@ async def invite_workspace_member(
     email = normalize_email(body.email)
     invitee = db.query(User).filter(User.email == email).first()
 
+    # An unverified account proves nothing about who owns the address, so it is
+    # treated exactly like "no account yet": the invite stays pending until the
+    # address is verified. Granting it here would let anyone who pre-registers a
+    # colleague's email walk straight into the workspace.
+    if invitee is not None and invitee.email_verified_at is None:
+        invitee = None
+
     if invitee:
         existing = (
             db.query(WorkspaceMember)

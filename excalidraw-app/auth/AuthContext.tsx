@@ -19,6 +19,7 @@ import {
   getStoredToken,
   setActiveWorkspaceId,
   setStoredToken,
+  SESSION_EXPIRED_EVENT,
   type AuthUser,
 } from "../data/backend";
 
@@ -74,6 +75,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
+  // a rejected token means this session is over; drop the user so the app
+  // stops rendering signed-in chrome and routes back to sign-in
+  useEffect(() => {
+    const onExpired = () => setUser(null);
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     const session = await apiLogin(email, password);
     setStoredToken(session.token);
@@ -87,6 +96,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     },
     [],
   );
+
+  const changePassword = useCallback(async (current: string, next: string) => {
+    const result = await apiChangePassword(current, next);
+    // the old token died with the old password; adopt the replacement so the
+    // user isn't signed out of the tab they just changed it in
+    setStoredToken(result.token);
+  }, []);
 
   const verifyEmail = useCallback(async (token: string) => {
     const session = await apiVerifyEmail(token);
@@ -118,9 +134,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       logout,
       forgotPassword: apiForgotPassword,
       resetPassword,
-      changePassword: apiChangePassword,
+      changePassword,
     }),
-    [user, isLoaded, login, signup, verifyEmail, logout, resetPassword],
+    [
+      user,
+      isLoaded,
+      login,
+      signup,
+      verifyEmail,
+      logout,
+      resetPassword,
+      changePassword,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

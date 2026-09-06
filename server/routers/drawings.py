@@ -114,6 +114,24 @@ def _role_for(drawing: Drawing, user_id: str, workspace_ids: set[uuid.UUID]) -> 
     return None
 
 
+def _assert_collection_writable(
+    db: Session, ctx: AuthContext, collection_id: uuid.UUID | None
+) -> None:
+    """A collection id arrives straight from the client, so it has to be
+    checked: without this, knowing another tenant's collection UUID was enough
+    to file a drawing into their folder."""
+    if collection_id is None:
+        return
+    collection = db.get(Collection, collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    if collection.workspace_id is not None:
+        if collection.workspace_id not in get_user_workspace_ids(db, ctx.user_id):
+            raise HTTPException(status_code=403, detail="Not your collection")
+    elif collection.owner_id != ctx.user_id:
+        raise HTTPException(status_code=403, detail="Not your collection")
+
+
 async def _get_drawing_or_404(
     db: Session, drawing_id: uuid.UUID, user_id: str
 ) -> tuple[Drawing, str]:
@@ -192,6 +210,7 @@ async def create_drawing(
     db: Session = Depends(get_db),
 ):
     workspace_id = ctx.workspace_id
+    _assert_collection_writable(db, ctx, body.collection_id)
     drawing = Drawing(
         owner_id=ctx.user_id,
         workspace_id=workspace_id,
@@ -275,6 +294,7 @@ async def update_drawing(
     if "title" in fields and body.title is not None:
         drawing.title = body.title
     if "collection_id" in fields:
+        _assert_collection_writable(db, ctx, body.collection_id)
         drawing.collection_id = body.collection_id
     db.commit()
     db.refresh(drawing)
@@ -315,6 +335,11 @@ async def invite_member(
 
     email = body.email.strip().lower()
     invitee = db.query(User).filter(User.email == email).first()
+
+    # same rule as workspace invites: an unverified account is not proof of
+    # address ownership, so the invite waits in pending_invites instead
+    if invitee is not None and invitee.email_verified_at is None:
+        invitee = None
 
     if invitee:
         existing = (

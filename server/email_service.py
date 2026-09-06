@@ -20,7 +20,11 @@ APP_URL = os.environ.get("APP_URL", "").rstrip("/")
 async def send_password_reset(to_email: str, token: str) -> bool:
     reset_url = f"{APP_URL}/reset-password?token={token}"
     if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY unset; reset link for %s: %s", to_email, reset_url)
+        # never log the URL: it carries the raw reset token, which would turn
+        # log access into account takeover
+        logger.error(
+            "RESEND_API_KEY unset; password reset email for %s was not sent", to_email
+        )
         return False
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -49,9 +53,10 @@ async def send_password_reset(to_email: str, token: str) -> bool:
     return True
 
 
-async def _send(to_email: str, subject: str, html: str, fallback: str) -> bool:
+async def _send(to_email: str, subject: str, html: str, fallback: str) -> bool:  # noqa: ARG001
     if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY unset; %s for %s: %s", subject, to_email, fallback)
+        # `fallback` can embed a single-use token; log only that it failed
+        logger.error("RESEND_API_KEY unset; %r email for %s was not sent", subject, to_email)
         return False
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:

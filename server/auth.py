@@ -63,11 +63,37 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user: User) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode(
-        {"sub": user_id, "iat": now, "exp": now + TOKEN_TTL}, AUTH_SECRET, algorithm=_ALGO
+        {
+            "sub": user.id,
+            "tv": user.token_version,
+            "iat": now,
+            "exp": now + TOKEN_TTL,
+        },
+        AUTH_SECRET,
+        algorithm=_ALGO,
     )
+
+
+def bump_token_version(db: Session, user: User) -> None:
+    """Invalidates every session minted before now. Called whenever control of
+    the account changes hands, so a password reset actually evicts a thief and
+    a pre-verification session can't survive into the verified account."""
+    user.token_version = (user.token_version or 0) + 1
+    db.commit()
+
+
+def _user_for_claims(db: Session, claims: dict) -> User | None:
+    user = db.get(User, claims.get("sub"))
+    if user is None:
+        return None
+    # a token minted before the last ownership change is dead even though the
+    # signature is still valid and the user still exists
+    if int(claims.get("tv", -1)) != int(user.token_version or 0):
+        return None
+    return user
 
 
 def _decode(token: str) -> dict:
@@ -100,15 +126,30 @@ def issue_reset_token(db: Session, user: User) -> str:
 
 
 def consume_reset_token(db: Session, raw: str) -> User | None:
+    """Claims the token atomically. The UPDATE ... WHERE used_at IS NULL is the
+    lock: two concurrent redemptions of the same link can't both win, which a
+    read-then-assign would allow. Every other outstanding reset token for the
+    account is then dropped, so an older or stolen link can't undo the reset
+    that just happened."""
+    now = datetime.now(timezone.utc)
+    claimed = (
+        db.query(PasswordResetToken)
+        .filter(
+            PasswordResetToken.token_hash == hash_reset_token(raw),
+            PasswordResetToken.used_at.is_(None),
+            PasswordResetToken.expires_at >= now,
+        )
+        .update({PasswordResetToken.used_at: now}, synchronize_session=False)
+    )
+    if not claimed:
+        db.rollback()
+        return None
     row = db.get(PasswordResetToken, hash_reset_token(raw))
-    if row is None or row.used_at is not None:
-        return None
-    expires_at = row.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
-        return None
-    row.used_at = datetime.now(timezone.utc)
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == row.user_id,
+        PasswordResetToken.used_at.is_(None),
+    ).delete(synchronize_session=False)
+    db.commit()
     return db.get(User, row.user_id)
 
 
@@ -137,15 +178,22 @@ def issue_verification_token(db: Session, user: User) -> str:
 
 
 def consume_verification_token(db: Session, raw: str) -> User | None:
+    """Atomic for the same reason as consume_reset_token."""
+    now = datetime.now(timezone.utc)
+    claimed = (
+        db.query(EmailVerificationToken)
+        .filter(
+            EmailVerificationToken.token_hash == hash_reset_token(raw),
+            EmailVerificationToken.used_at.is_(None),
+            EmailVerificationToken.expires_at >= now,
+        )
+        .update({EmailVerificationToken.used_at: now}, synchronize_session=False)
+    )
+    if not claimed:
+        db.rollback()
+        return None
     row = db.get(EmailVerificationToken, hash_reset_token(raw))
-    if row is None or row.used_at is not None:
-        return None
-    expires_at = row.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
-        return None
-    row.used_at = datetime.now(timezone.utc)
+    db.commit()
     return db.get(User, row.user_id)
 
 
@@ -195,13 +243,6 @@ def claim_pending_invites(db: Session, user: User) -> None:
 
 # ---------------------------------------------------------------- dependencies
 
-def _user_id_from_token(token: str) -> str:
-    try:
-        return _decode(token)["sub"]
-    except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
-
-
 async def get_current_user_id(
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
@@ -209,11 +250,16 @@ async def get_current_user_id(
     token = _extract_token(authorization)
     if not token:
         raise HTTPException(status_code=401, detail="Missing bearer token")
-    user_id = _user_id_from_token(token)
-    # a token outliving its user (deleted account) must not authorise anything
-    if not db.get(User, user_id):
-        raise HTTPException(status_code=401, detail="User no longer exists")
-    return user_id
+    try:
+        claims = _decode(token)
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
+    # a token outliving its user (deleted account) or its token_version (the
+    # password was reset out from under it) must not authorise anything
+    user = _user_for_claims(db, claims)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Session is no longer valid")
+    return user.id
 
 
 async def get_current_user_id_optional(
@@ -224,10 +270,11 @@ async def get_current_user_id_optional(
     if not token:
         return None
     try:
-        user_id = _decode(token)["sub"]
+        claims = _decode(token)
     except jwt.PyJWTError:
         return None
-    return user_id if db.get(User, user_id) else None
+    user = _user_for_claims(db, claims)
+    return user.id if user else None
 
 
 async def get_current_context(
@@ -262,7 +309,8 @@ async def verify_socket_token(token: str | None, db: Session) -> str | None:
     if not token:
         return None
     try:
-        user_id = _decode(token)["sub"]
+        claims = _decode(token)
     except jwt.PyJWTError:
         return None
-    return user_id if db.get(User, user_id) else None
+    user = _user_for_claims(db, claims)
+    return user.id if user else None

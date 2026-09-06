@@ -27,6 +27,7 @@ def _run_lightweight_migrations() -> None:
         "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS owner_id TEXT REFERENCES users(id)",
         "ALTER TABLE workspaces DROP COLUMN IF EXISTS clerk_org_id",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE password_reset_tokens ALTER COLUMN expires_at TYPE TIMESTAMPTZ",
         "ALTER TABLE password_reset_tokens ALTER COLUMN used_at TYPE TIMESTAMPTZ",
         "ALTER TABLE drawings ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL",
