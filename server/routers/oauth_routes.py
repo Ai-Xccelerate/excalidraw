@@ -18,8 +18,6 @@ from db import get_db
 from models import OAuthClient, OAuthToken, User
 from oauth import (
     DEFAULT_SCOPE,
-    PUBLIC_API_URL,
-    PUBLIC_APP_URL,
     SUPPORTED_SCOPES,
     consume_code,
     hash_secret,
@@ -29,6 +27,8 @@ from oauth import (
     new_secret,
     normalize_scope,
     now,
+    public_api_url,
+    public_app_url,
     rotate_refresh_token,
     verify_pkce,
 )
@@ -39,13 +39,14 @@ router = APIRouter(tags=["oauth"])
 # ------------------------------------------------------------------ discovery
 
 @router.get("/.well-known/oauth-authorization-server")
-async def authorization_server_metadata():
+async def authorization_server_metadata(request: Request):
+    base = public_api_url(request)
     return {
-        "issuer": PUBLIC_API_URL,
-        "authorization_endpoint": f"{PUBLIC_API_URL}/oauth/authorize",
-        "token_endpoint": f"{PUBLIC_API_URL}/oauth/token",
-        "registration_endpoint": f"{PUBLIC_API_URL}/oauth/register",
-        "revocation_endpoint": f"{PUBLIC_API_URL}/oauth/revoke",
+        "issuer": base,
+        "authorization_endpoint": f"{base}/oauth/authorize",
+        "token_endpoint": f"{base}/oauth/token",
+        "registration_endpoint": f"{base}/oauth/register",
+        "revocation_endpoint": f"{base}/oauth/revoke",
         "scopes_supported": SUPPORTED_SCOPES,
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
@@ -56,10 +57,11 @@ async def authorization_server_metadata():
 
 
 @router.get("/.well-known/oauth-protected-resource")
-async def protected_resource_metadata():
+async def protected_resource_metadata(request: Request):
+    base = public_api_url(request)
     return {
-        "resource": f"{PUBLIC_API_URL}/mcp",
-        "authorization_servers": [PUBLIC_API_URL],
+        "resource": f"{base}/mcp",
+        "authorization_servers": [base],
         "scopes_supported": SUPPORTED_SCOPES,
         "bearer_methods_supported": ["header"],
         "resource_name": "AIXDraw",
@@ -171,7 +173,9 @@ async def authorize(request: Request, db: Session = Depends(get_db)):
             "resource": params.get("resource", ""),
         }
     )
-    return RedirectResponse(f"{PUBLIC_APP_URL}/oauth/consent?{consent}", status_code=302)
+    return RedirectResponse(
+        f"{public_app_url()}/oauth/consent?{consent}", status_code=302
+    )
 
 
 class ApproveRequest(BaseModel):

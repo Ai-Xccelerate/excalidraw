@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from db import get_db
 from diagrams import MermaidError, build_flowchart, merged_defaults, parse_mermaid
 from models import Drawing, UserSettings
-from oauth import PUBLIC_APP_URL, McpContext, get_mcp_context
+from oauth import McpContext, get_mcp_context, public_app_url
 from services import ensure_personal_workspace
 
 router = APIRouter(tags=["mcp"])
@@ -142,7 +142,8 @@ TOOLS = [
 
 
 def _drawing_url(drawing: Drawing) -> str:
-    return f"{PUBLIC_APP_URL}/d/{drawing.id}"
+    # an agent pastes this into a chat, so it has to be a full link
+    return f"{public_app_url()}/d/{drawing.id}"
 
 
 def _text(body: str) -> dict:

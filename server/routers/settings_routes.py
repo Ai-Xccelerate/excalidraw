@@ -5,7 +5,7 @@ Password changes stay in auth_routes — they belong with the rest of the
 credential handling.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from auth import AuthContext, get_current_context
 from db import get_db
 from diagrams import merged_defaults
 from models import OAuthClient, OAuthToken, User, UserSettings
-from oauth import PUBLIC_API_URL, now
+from oauth import now, public_api_url
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -74,14 +74,14 @@ def _settings_row(db: Session, user_id: str) -> UserSettings:
     return row
 
 
-def _out(user: User, row: UserSettings) -> SettingsOut:
+def _out(user: User, row: UserSettings, request: Request) -> SettingsOut:
     return SettingsOut(
         email=user.email,
         username=user.username,
         email_verified=user.email_verified_at is not None,
         notifications={**NOTIFICATION_DEFAULTS, **(row.notifications or {})},
         editor_defaults=merged_defaults(row.editor_defaults),
-        mcp_endpoint=f"{PUBLIC_API_URL}/mcp",
+        mcp_endpoint=f"{public_api_url(request)}/mcp",
     )
 
 
@@ -94,14 +94,17 @@ def _load(db: Session, ctx: AuthContext) -> tuple[User, UserSettings]:
 
 @router.get("", response_model=SettingsOut)
 async def read_settings(
-    ctx: AuthContext = Depends(get_current_context), db: Session = Depends(get_db)
+    request: Request,
+    ctx: AuthContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
 ):
     user, row = _load(db, ctx)
-    return _out(user, row)
+    return _out(user, row, request)
 
 
 @router.patch("/profile", response_model=SettingsOut)
 async def update_profile(
+    request: Request,
     body: ProfileUpdate,
     ctx: AuthContext = Depends(get_current_context),
     db: Session = Depends(get_db),
@@ -113,11 +116,12 @@ async def update_profile(
         # re-verification round trip, so it isn't editable here
         user.username = username or None
     db.commit()
-    return _out(user, row)
+    return _out(user, row, request)
 
 
 @router.patch("/notifications", response_model=SettingsOut)
 async def update_notifications(
+    request: Request,
     body: NotificationsUpdate,
     ctx: AuthContext = Depends(get_current_context),
     db: Session = Depends(get_db),
@@ -129,11 +133,12 @@ async def update_notifications(
             updated[key] = bool(value)
     row.notifications = updated
     db.commit()
-    return _out(user, row)
+    return _out(user, row, request)
 
 
 @router.patch("/editor-defaults", response_model=SettingsOut)
 async def update_editor_defaults(
+    request: Request,
     body: EditorDefaultsUpdate,
     ctx: AuthContext = Depends(get_current_context),
     db: Session = Depends(get_db),
@@ -163,7 +168,7 @@ async def update_editor_defaults(
 
     row.editor_defaults = updated
     db.commit()
-    return _out(user, row)
+    return _out(user, row, request)
 
 
 def _is_hex_color(value: str) -> bool:

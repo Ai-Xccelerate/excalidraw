@@ -16,7 +16,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from db import get_db
@@ -27,6 +27,33 @@ from models import OAuthAuthorizationCode, OAuthClient, OAuthToken, User
 PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", "").rstrip("/")
 # Where the consent screen lives (the app, not the API).
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "").rstrip("/")
+
+
+def public_api_url(request: Request) -> str:
+    """The origin clients should call us on. Configuration wins; otherwise it
+    is read off the request so an unset variable degrades to the host the
+    caller already reached rather than to a bare path."""
+    if PUBLIC_API_URL:
+        return PUBLIC_API_URL
+    # the proxy terminates TLS, so the raw URL says http
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+    )
+    return f"{scheme}://{host}".rstrip("/")
+
+
+def public_app_url(request: Request | None = None) -> str:
+    """Where the browser-facing app lives. The app calls this API from its own
+    origin, so that header is a usable fallback — but an agent's request
+    carries no such origin, which is why the variable is still the real
+    answer."""
+    if PUBLIC_APP_URL:
+        return PUBLIC_APP_URL
+    origin = request.headers.get("origin") if request is not None else None
+    return (origin or "").rstrip("/")
 
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 REFRESH_TOKEN_TTL = timedelta(days=60)
@@ -203,10 +230,10 @@ class McpContext:
             )
 
 
-def _unauthorized(detail: str) -> HTTPException:
+def _unauthorized(detail: str, base_url: str) -> HTTPException:
     # the resource-metadata pointer is what lets an MCP client discover where
     # to authorize; without it the client has no way to start the flow
-    resource_metadata = f"{PUBLIC_API_URL}/.well-known/oauth-protected-resource"
+    resource_metadata = f"{base_url}/.well-known/oauth-protected-resource"
     return HTTPException(
         status_code=401,
         detail=detail,
@@ -221,11 +248,13 @@ def _unauthorized(detail: str) -> HTTPException:
 
 
 async def get_mcp_context(
+    request: Request,
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> McpContext:
+    base_url = public_api_url(request)
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise _unauthorized("Missing bearer token")
+        raise _unauthorized("Missing bearer token", base_url)
     raw = authorization.split(" ", 1)[1].strip()
     row = (
         db.query(OAuthToken)
@@ -236,12 +265,12 @@ async def get_mcp_context(
         .first()
     )
     if row is None:
-        raise _unauthorized("Unknown or revoked token")
+        raise _unauthorized("Unknown or revoked token", base_url)
     if row.expires_at < now():
-        raise _unauthorized("Token has expired")
+        raise _unauthorized("Token has expired", base_url)
     user = db.get(User, row.user_id)
     if user is None:
-        raise _unauthorized("Account no longer exists")
+        raise _unauthorized("Account no longer exists", base_url)
     row.last_used_at = now()
     db.commit()
     return McpContext(user, row)

@@ -49,6 +49,21 @@ ok &= check("discovery advertises S256 PKCE", meta["code_challenge_methods_suppo
 res_meta = client.get("/.well-known/oauth-protected-resource").json()
 ok &= check("resource metadata points at /mcp", res_meta["resource"].endswith("/mcp"), res_meta)
 
+# 1b. with PUBLIC_API_URL unset the URLs fall back to the host that was called,
+# rather than degrading to a bare "/mcp" nobody can connect to
+import oauth as oauth_module
+configured = oauth_module.PUBLIC_API_URL
+oauth_module.PUBLIC_API_URL = ""
+derived = client.get("/.well-known/oauth-protected-resource",
+                     headers={"host": "api.example.com", "x-forwarded-proto": "https"}).json()
+ok &= check("discovery falls back to the requested host",
+            derived["resource"] == "https://api.example.com/mcp", derived)
+derived_settings = client.get("/api/settings", headers={**AUTH, "host": "api.example.com",
+                                                        "x-forwarded-proto": "https"}).json()
+ok &= check("settings shows an absolute MCP url without configuration",
+            derived_settings["mcp_endpoint"] == "https://api.example.com/mcp", derived_settings)
+oauth_module.PUBLIC_API_URL = configured
+
 # 2. unauthenticated /mcp challenges with where to authorize
 unauth = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
 ok &= check("bare /mcp returns 401", unauth.status_code == 401, unauth.status_code)
