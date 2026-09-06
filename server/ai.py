@@ -11,10 +11,10 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-MODEL_API_KEY = os.environ.get("MODEL_API_KEY")
-MODEL_API_BASE = os.environ.get("MODEL_API_BASE", "https://api.meta.ai/v1").rstrip("/")
+MODEL_API_KEY = (os.environ.get("MODEL_API_KEY") or "").strip() or None
+MODEL_API_BASE = os.environ.get("MODEL_API_BASE", "https://api.meta.ai/v1").strip().rstrip("/")
 # pinned via env so a newer Muse revision is a config change, not a deploy
-MUSE_MODEL = os.environ.get("MUSE_MODEL", "muse-spark-1.3")
+MUSE_MODEL = (os.environ.get("MUSE_MODEL") or "muse-spark-1.3").strip()
 
 REQUEST_TIMEOUT = httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0)
 
@@ -71,7 +71,7 @@ async def complete(messages: list[dict], max_tokens: int = DEFAULT_MAX_TOKENS) -
         raise AIUnavailable("Upstream rate limit reached", status=429)
     if response.status_code >= 400:
         raise AIUnavailable(
-            f"Model returned {response.status_code}: {response.text[:500]}",
+            f"Model {MUSE_MODEL!r} returned {response.status_code}: {response.text[:300]}",
             status=502,
         )
 
