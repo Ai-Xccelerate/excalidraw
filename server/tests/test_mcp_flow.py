@@ -174,7 +174,7 @@ made = rpc("tools/call", {"name": "create_mermaid_diagram", "arguments": {
 text = made["content"][0]["text"]
 ok &= check("mermaid diagram is created", "Created 'Onboarding'" in text and not made["isError"], text)
 
-drawing_id = text.rsplit("/d/", 1)[1].strip()
+drawing_id = text.rsplit("/d/", 1)[1].split()[0].strip()
 from models import Drawing
 db.expire_all()
 drawing = db.get(Drawing, uuid.UUID(drawing_id))
@@ -224,6 +224,38 @@ ok &= check("a dotted link is drawn dotted",
             any(e["type"] == "arrow" and e["strokeStyle"] == "dashed" for e in rich_scene), None)
 ok &= check("an undirected --- link has no arrowhead",
             any(e["type"] == "arrow" and e["endArrowhead"] is None for e in rich_scene), None)
+
+# 9c. a hyphen in a label is a hyphen, not a link
+hyphen = rpc("tools/call", {"name": "create_mermaid_diagram", "arguments": {
+    "title": "Reranker", "mermaid": """flowchart TD
+    A[Cross-encoder reranker] --> B[RUNG 3 - START HERE]"""}})["result"]
+ok &= check("a hyphen inside a label does not split the node", not hyphen["isError"], hyphen)
+hyphen_id = hyphen["content"][0]["text"].rsplit("/d/", 1)[1].split()[0].strip()
+db.expire_all()
+hyphen_labels = {e["text"] for e in db.get(Drawing, uuid.UUID(hyphen_id)).elements
+                 if e["type"] == "text"}
+ok &= check("the hyphenated label is intact",
+            {"Cross-encoder reranker", "RUNG 3 - START HERE"} <= hyphen_labels,
+            sorted(hyphen_labels))
+
+# 9d. children line up under their parents rather than stacking in a column
+tree = rpc("tools/call", {"name": "create_flowchart", "arguments": {
+    "title": "Layout", "direction": "down",
+    "nodes": [{"id": i, "label": i} for i in ["root", "l", "r", "join"]],
+    "edges": [{"from": "root", "to": "l"}, {"from": "root", "to": "r"},
+              {"from": "l", "to": "join"}, {"from": "r", "to": "join"}]}})["result"]
+tree_id = tree["content"][0]["text"].rsplit("/d/", 1)[1].split()[0].strip()
+db.expire_all()
+boxes = {e["id"]: e for e in db.get(Drawing, uuid.UUID(tree_id)).elements
+         if e["type"] == "rectangle"}
+labels = {e["containerId"]: e["text"] for e in db.get(Drawing, uuid.UUID(tree_id)).elements
+          if e["type"] == "text" and e.get("containerId")}
+centres = {labels[bid]: box["x"] + box["width"] / 2 for bid, box in boxes.items()
+           if bid in labels}
+ok &= check("branches are placed either side of their parent",
+            centres["l"] < centres["root"] < centres["r"], centres)
+ok &= check("a merge point sits between the branches it joins",
+            abs(centres["join"] - (centres["l"] + centres["r"]) / 2) < 2, centres)
 
 flattened = rpc("tools/call", {"name": "create_mermaid_diagram", "arguments": {
     "title": "Pipeline", "mermaid": """flowchart LR

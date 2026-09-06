@@ -155,6 +155,160 @@ def _layers(node_ids: list[str], edges: list[dict]) -> list[list[str]]:
     return [layer for layer in layers if layer]
 
 
+def _neighbours(
+    node_ids: list[str], edges: list[dict]
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    parents: dict[str, list[str]] = {n: [] for n in node_ids}
+    children: dict[str, list[str]] = {n: [] for n in node_ids}
+    for edge in edges:
+        if edge["from"] in parents and edge["to"] in parents:
+            parents[edge["to"]].append(edge["from"])
+            children[edge["from"]].append(edge["to"])
+    return parents, children
+
+
+def _order_layers(
+    layers: list[list[str]], parents: dict, children: dict
+) -> list[list[str]]:
+    """Orders each layer by the average position of what it connects to, a few
+    times in each direction. Without this a branch drawn late sits wherever it
+    was declared and its arrow crosses the whole diagram to get there."""
+    ordered = [list(layer) for layer in layers]
+
+    for sweep in range(4):
+        downward = sweep % 2 == 0
+        indexes = range(1, len(ordered)) if downward else range(len(ordered) - 2, -1, -1)
+        for level in indexes:
+            adjacent = ordered[level - 1] if downward else ordered[level + 1]
+            rank = {node_id: i for i, node_id in enumerate(adjacent)}
+            relations = parents if downward else children
+
+            def key(node_id: str, _rank=rank, _relations=relations, _level=level):
+                positions = [
+                    _rank[other] for other in _relations[node_id] if other in _rank
+                ]
+                # a node with nothing in the neighbouring layer keeps its place
+                return (
+                    sum(positions) / len(positions)
+                    if positions
+                    else ordered[_level].index(node_id)
+                )
+
+            ordered[level] = sorted(ordered[level], key=key)
+
+    return ordered
+
+
+def _pack(
+    layer: list[str],
+    sizes: dict,
+    horizontal: bool,
+    desired: dict[str, float],
+    current: dict[str, float] | None = None,
+) -> dict[str, float]:
+    """Places one layer in order, as close to each node's desired centre as the
+    gaps allow: a left-to-right pass, then a right-to-left one so the whole row
+    isn't shoved along by its first node."""
+    extent = {n: (sizes[n][1] if horizontal else sizes[n][0]) for n in layer}
+    current = current or {}
+    centres: dict[str, float] = {}
+
+    cursor = -1e9
+    for node_id in layer:
+        half = extent[node_id] / 2
+        # a node with nothing to line up against holds where it is rather than
+        # being dragged to the origin
+        target = desired.get(node_id, current.get(node_id, 0.0))
+        centre = max(target, cursor + GAP_ACROSS + half)
+        centres[node_id] = centre
+        cursor = centre + half
+
+    cursor = 1e9
+    for node_id in reversed(layer):
+        half = extent[node_id] / 2
+        centre = min(centres[node_id], cursor - GAP_ACROSS - half)
+        centres[node_id] = centre
+        cursor = centres[node_id] - half
+
+    # restore separation the backward pass may have broken
+    cursor = -1e9
+    for node_id in layer:
+        half = extent[node_id] / 2
+        centres[node_id] = max(centres[node_id], cursor + GAP_ACROSS + half)
+        cursor = centres[node_id] + half
+
+    return centres
+
+
+def _layout(
+    layers: list[list[str]], sizes: dict, edges: list[dict], horizontal: bool
+) -> dict[str, tuple[int, int, int, int]]:
+    """Assigns every node a box. Layers run along one axis; within a layer,
+    nodes are pulled towards the middle of whatever they connect to so a parent
+    sits over its children and a merge point sits under its sources."""
+    node_ids = [n for layer in layers for n in layer]
+    parents, children = _neighbours(node_ids, edges)
+    layers = _order_layers(layers, parents, children)
+
+    centres: dict[str, float] = {}
+    for layer in layers:
+        centres.update(_pack(layer, sizes, horizontal, {}))
+
+    # an odd count so the last word goes to the downward pass: sitting under
+    # your parents is what reads as a tree
+    for sweep in range(7):
+        downward = sweep % 2 == 0
+        indexes = range(len(layers)) if downward else range(len(layers) - 1, -1, -1)
+        for level in indexes:
+            primary = parents if downward else children
+            secondary = children if downward else parents
+            desired = {}
+            for node_id in layers[level]:
+                # a root has no parents to sit under, so it centres over what it
+                # leads to instead — otherwise it stays wherever it was placed
+                linked = [centres[o] for o in primary[node_id] if o in centres]
+                if not linked:
+                    linked = [centres[o] for o in secondary[node_id] if o in centres]
+                if linked:
+                    desired[node_id] = sum(linked) / len(linked)
+            centres.update(
+                _pack(layers[level], sizes, horizontal, desired, centres)
+            )
+
+    # the sweeps end downward so children sit under their parents, which leaves
+    # a root aligned against where its children *were*. One last pass, moving
+    # only the nodes nothing points at, puts each root over its branches.
+    for level in range(len(layers) - 1, -1, -1):
+        desired = {}
+        for node_id in layers[level]:
+            if parents[node_id]:
+                desired[node_id] = centres[node_id]
+                continue
+            linked = [centres[o] for o in children[node_id] if o in centres]
+            if linked:
+                desired[node_id] = sum(linked) / len(linked)
+        centres.update(_pack(layers[level], sizes, horizontal, desired, centres))
+
+    shift = min(
+        centres[n] - (sizes[n][1] if horizontal else sizes[n][0]) / 2 for n in node_ids
+    )
+
+    positions: dict[str, tuple[int, int, int, int]] = {}
+    along = 0
+    for layer in layers:
+        deepest = max((sizes[n][0] if horizontal else sizes[n][1]) for n in layer)
+        for node_id in layer:
+            width, height, _ = sizes[node_id]
+            across = centres[node_id] - shift
+            if horizontal:
+                positions[node_id] = (along, int(across - height / 2), width, height)
+            else:
+                positions[node_id] = (int(across - width / 2), along, width, height)
+        along += deepest + GAP_ALONG
+
+    return positions
+
+
 # ------------------------------------------------------------------ building
 
 def build_flowchart(
@@ -178,31 +332,7 @@ def build_flowchart(
         label = str(node.get("label") or node["id"])
         sizes[node["id"]] = _node_size(label, font_size)
 
-    # place each layer, centred on the longest one
-    positions: dict[str, tuple[int, int, int, int]] = {}
-    along = 0
-    spans = []
-    for layer in layers:
-        # "across" is the axis the layer spreads along: heights stack when the
-        # chart runs left-to-right, widths when it runs top-down
-        spans.append(
-            sum(sizes[n][1] if horizontal else sizes[n][0] for n in layer)
-            + GAP_ACROSS * (len(layer) - 1)
-        )
-    widest = max(spans) if spans else 0
-
-    for layer, span in zip(layers, spans):
-        deepest = max((sizes[n][1] if not horizontal else sizes[n][0]) for n in layer)
-        across = (widest - span) / 2
-        for node_id in layer:
-            width, height, _ = sizes[node_id]
-            if horizontal:
-                positions[node_id] = (along, int(across), width, height)
-                across += height + GAP_ACROSS
-            else:
-                positions[node_id] = (int(across), along, width, height)
-                across += width + GAP_ACROSS
-        along += deepest + GAP_ALONG
+    positions = _layout(layers, sizes, edges, horizontal)
 
     elements: list[dict] = []
     containers: dict[str, dict] = {}
@@ -394,12 +524,11 @@ _SHAPE_PAIRS: list[tuple[str, str, str, bool]] = [
 ]
 
 _ID_RE = re.compile(r"^(?P<id>[A-Za-z0-9_.\-]+)")
-# ---, -->, ==>, -.->, with optional heads on either end and an inline label
-_EDGE_RE = re.compile(
-    r"^(?P<from>.+?)\s*"
-    r"(?P<arrow><?(?:-\.-|-\.|--|-|==|=)+>?)"
-    r"\s*(?:\|(?P<label>[^|]*)\|\s*)?(?P<to>.+?)$"
-)
+# A link is at least two characters of link syntax: --, ---, -->, -.-, -.->,
+# ==, ==>, with an optional head on either end. A single dash is never a link,
+# which is what keeps "Cross-encoder reranker" a label rather than two nodes.
+_LINK_RE = re.compile(r"<?(?:-{2,}|-\.+-|={2,})>?")
+_LABEL_RE = re.compile(r"^\s*\|(?P<label>[^|]*)\|\s*")
 _STYLE_RE = re.compile(r"(?P<key>[a-zA-Z-]+)\s*:\s*(?P<value>[^,;]+)")
 _HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -418,6 +547,25 @@ _ENTITIES = {
 
 class MermaidError(ValueError):
     pass
+
+
+def _split_link(line: str) -> tuple[str, str, str] | None:
+    """Finds the first link *outside* any bracket, so punctuation inside a
+    label — dashes, arrows, anything — cannot be mistaken for one."""
+    depth = 0
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if char in "[({":
+            depth += 1
+        elif char in "])}":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            match = _LINK_RE.match(line, index)
+            if match:
+                return line[:index], match.group(0), line[match.end() :]
+        index += 1
+    return None
 
 
 def _clean_label(raw: str) -> str:
@@ -564,16 +712,22 @@ def parse_mermaid(source: str) -> tuple[list[dict], list[dict], str, list[str]]:
         if lowered.startswith(("linkstyle", "click ", "direction ")):
             continue
 
-        match = _EDGE_RE.match(line)
-        if match:
-            arrow = match.group("arrow")
-            label = _clean_label(match.group("label") or "")
-            left = match.group("from")
-            # `A -- text --> B` puts the label mid-arrow instead of in pipes
-            inline = re.match(r"^(?P<from>.+?)\s+--\s*(?P<label>[^-|>]+?)\s*$", left)
-            if inline and not label:
-                left = inline.group("from")
-                label = _clean_label(inline.group("label"))
+        split = _split_link(line)
+        if split:
+            left, arrow, rest = split
+            label = ""
+
+            label_match = _LABEL_RE.match(rest)
+            if label_match:
+                label = _clean_label(label_match.group("label"))
+                rest = rest[label_match.end() :]
+            else:
+                # `A -- text --> B` carries the label between two links
+                second = _split_link(rest)
+                if second:
+                    middle, arrow, rest = second
+                    label = _clean_label(middle)
+
             style = {
                 "dashed": "-." in arrow,
                 "thick": "=" in arrow,
@@ -581,7 +735,7 @@ def parse_mermaid(source: str) -> tuple[list[dict], list[dict], str, list[str]]:
                 "head_start": arrow.startswith("<"),
             }
             for source_id in [note_node(t) for t in left.split("&")]:
-                for target_id in [note_node(t) for t in match.group("to").split("&")]:
+                for target_id in [note_node(t) for t in rest.split("&")]:
                     edges.append(
                         {
                             "from": source_id,

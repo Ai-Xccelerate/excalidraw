@@ -116,12 +116,24 @@ TOOLS = [
         "name": "create_mermaid_diagram",
         "title": "Create a diagram from mermaid",
         "description": (
-            "Render a mermaid flowchart (`flowchart TD` / `graph LR`) as a new "
-            "AIXDraw drawing. Handles every node shape, `<br/>` line breaks in "
-            "labels, edge labels, dotted and thick links, and classDef/class/style "
-            "colouring. Subgraphs are flattened — the nodes come through but are "
-            "not boxed together. Other mermaid diagram types (sequence, class, "
-            "gantt) are not supported; compose those with create_flowchart."
+            "Render a mermaid flowchart as a new AIXDraw drawing.\n\n"
+            "Supported, so write the diagram you actually want:\n"
+            "- `flowchart TD|TB|LR|RL|BT` and `graph` (TD is top-down, LR is "
+            "left-to-right — prefer LR once a chart is more than ~6 levels deep, "
+            "it reads far better than a tall column)\n"
+            "- every node shape: [rect], (round), ([stadium]), [[subroutine]], "
+            "[(cylinder)], ((circle)), {diamond}, {{hexagon}}, [/parallelogram/]\n"
+            "- `<br/>` inside a label becomes a real line break, and the box grows "
+            "to fit; punctuation including hyphens is fine in labels\n"
+            "- edge labels both ways: `A -->|yes| B` and `A -- yes --> B`\n"
+            "- link styles: `-->` arrow, `---` plain line, `-.->` dotted, `==>` "
+            "thick\n"
+            "- colour: `classDef name fill:#dbeafe,stroke:#1e40af,color:#0b1324` "
+            "with `class A,B name`, `A:::name`, or `style A fill:#fee2e2`\n"
+            "- fan-out: `A --> B & C`\n\n"
+            "Not supported: subgraphs are flattened (the nodes come through, the "
+            "grouping does not — the result says so), and other mermaid diagram "
+            "types (sequence, class, gantt) are refused rather than half-drawn."
         ),
         "inputSchema": {
             "type": "object",
@@ -142,6 +154,21 @@ TOOLS = [
         },
     },
 ]
+
+
+def _depth(nodes: list[dict], edges: list[dict]) -> int:
+    """How many levels the chart will end up with, for the layout hint."""
+    depth = {node["id"]: 0 for node in nodes}
+    for _ in range(len(nodes)):
+        changed = False
+        for edge in edges:
+            if edge["from"] in depth and edge["to"] in depth:
+                if depth[edge["from"]] + 1 > depth[edge["to"]]:
+                    depth[edge["to"]] = depth[edge["from"]] + 1
+                    changed = True
+        if not changed:
+            break
+    return max(depth.values(), default=0) + 1
 
 
 def _drawing_url(drawing: Drawing) -> str:
@@ -265,6 +292,11 @@ def _call_tool(name: str, args: dict, ctx: McpContext, db: Session) -> dict:
             f"Created '{drawing.title}' with {len(nodes)} nodes and {len(edges)} "
             f"connections: {_drawing_url(drawing)}"
         ]
+        if direction == "down" and _depth(nodes, edges) > 6:
+            body.append(
+                "This one is deep — `flowchart LR` would read wider instead of "
+                "as a tall column."
+            )
         # anything that could not be represented is said out loud, so the
         # agent isn't left believing the canvas matches the source
         body.extend(notes)
@@ -305,10 +337,23 @@ def _handle(message: dict, ctx: McpContext, db: Session) -> dict | None:
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": SERVER_INFO,
                 "instructions": (
-                    "Drawings live in the signed-in user's AIXDraw account. Use "
-                    "create_flowchart to compose a diagram yourself, or "
-                    "create_mermaid_diagram when you already have mermaid source. "
-                    "Both apply the user's saved editor defaults."
+                    "Drawings live in the signed-in user's AIXDraw account.\n\n"
+                    "Use create_mermaid_diagram when you already have mermaid "
+                    "source, or create_flowchart to compose from nodes and edges. "
+                    "Both lay the diagram out in layers, bind each label to its "
+                    "shape and each arrow to the shapes it connects, and apply the "
+                    "user's saved drawing defaults — so the result is editable on "
+                    "the canvas, not a picture.\n\n"
+                    "Write the diagram you would write anywhere else. Line breaks, "
+                    "hyphens, node shapes, edge labels, dotted and thick links, and "
+                    "classDef colouring all come through; the tool descriptions "
+                    "list what does not. Do not simplify a diagram to fit imagined "
+                    "limits — if something cannot be represented, the tool says so "
+                    "in its result.\n\n"
+                    "Two things that make a diagram read well here: prefer "
+                    "`flowchart LR` once it is more than about six levels deep, and "
+                    "keep a node's label to a few short lines, putting detail on the "
+                    "edges or in a following node."
                 ),
             },
         )
