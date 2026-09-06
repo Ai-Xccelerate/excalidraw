@@ -248,7 +248,11 @@ def _pack(
 
 
 def _layout(
-    layers: list[list[str]], sizes: dict, edges: list[dict], horizontal: bool
+    layers: list[list[str]],
+    sizes: dict,
+    edges: list[dict],
+    horizontal: bool,
+    reverse: bool = False,
 ) -> dict[str, tuple[int, int, int, int]]:
     """Assigns every node a box. Layers run along one axis; within a layer,
     nodes are pulled towards the middle of whatever they connect to so a parent
@@ -302,7 +306,9 @@ def _layout(
 
     positions: dict[str, tuple[int, int, int, int]] = {}
     along = 0
-    for layer in layers:
+    # `up` and `left` are the same layering read from the other end, so the
+    # last layer is placed first and the arrows come out pointing back
+    for layer in (reversed(layers) if reverse else layers):
         deepest = max((sizes[n][0] if horizontal else sizes[n][1]) for n in layer)
         for node_id in layer:
             width, height, _ = sizes[node_id]
@@ -329,6 +335,7 @@ def build_flowchart(
     font_size = int(defaults["font_size"])
     font_family = FONT_FAMILY.get(str(defaults["font_family"]), FONT_FAMILY["hand-drawn"])
     horizontal = direction in ("right", "left", "lr", "rl")
+    reverse = direction in ("up", "left", "bt", "rl")
 
     known = {node["id"]: node for node in nodes}
     edges = [e for e in edges if e.get("from") in known and e.get("to") in known]
@@ -339,7 +346,7 @@ def build_flowchart(
         label = str(node.get("label") or node["id"])
         sizes[node["id"]] = _node_size(label, font_size)
 
-    positions = _layout(layers, sizes, edges, horizontal)
+    positions = _layout(layers, sizes, edges, horizontal, reverse)
 
     elements: list[dict] = []
     containers: dict[str, dict] = {}

@@ -15,7 +15,7 @@ import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -121,11 +121,14 @@ def new_secret(prefix: str = "") -> str:
 
 def normalize_scope(requested: str | None) -> str:
     """Unknown scopes are dropped rather than rejected: a client asking for
-    more than we offer should still get a working, narrower token."""
+    more than we offer should still get a working, narrower token.
+
+    Asking for *only* unknown scopes returns nothing — falling back to the
+    default there would hand out read, write and profile to a client that
+    asked for none of them."""
     if not requested:
         return DEFAULT_SCOPE
-    granted = [s for s in requested.split() if s in SUPPORTED_SCOPES]
-    return " ".join(granted) if granted else DEFAULT_SCOPE
+    return " ".join(s for s in requested.split() if s in SUPPORTED_SCOPES)
 
 
 def is_valid_redirect_uri(uri: str) -> bool:
@@ -137,6 +140,10 @@ def is_valid_redirect_uri(uri: str) -> bool:
         return False
     if not parsed.scheme:
         return False
+    if parsed.fragment:
+        # OAuth 2.1: the callback must not carry a fragment — the response
+        # parameters would end up behind it and never reach the client
+        return False
     if parsed.scheme == "https":
         return True
     if parsed.scheme == "http":
@@ -147,6 +154,18 @@ def is_valid_redirect_uri(uri: str) -> bool:
     if parsed.scheme in _REJECTED_SCHEMES:
         return False
     return bool(parsed.netloc or parsed.path)
+
+
+def redirect_with(uri: str, params: dict[str, str]) -> str:
+    """Merges OAuth parameters into the callback's own query string. A
+    registered callback may already carry one, and gluing "?code=..." onto it
+    produces "cb?tenant=x?code=..." — which the client cannot parse."""
+    parts = urlsplit(uri)
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    query.extend((key, value) for key, value in params.items() if value)
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
 
 
 def verify_pkce(verifier: str, challenge: str, method: str) -> bool:
@@ -226,9 +245,10 @@ def issue_tokens(
     return access, refresh, int(ACCESS_TOKEN_TTL.total_seconds())
 
 
-def rotate_refresh_token(db: Session, raw_refresh: str) -> tuple[str, str, int] | None:
-    """Refresh tokens are single use: the old row is revoked as it is spent, so
-    a stolen refresh token stops working as soon as the real client uses it."""
+def find_refresh_token(db: Session, raw_refresh: str) -> OAuthToken | None:
+    """Looks the token up without spending it, so the client can be
+    authenticated before anything is burned — otherwise a wrong secret would
+    invalidate the real client's token."""
     row = (
         db.query(OAuthToken)
         .filter(
@@ -239,8 +259,31 @@ def rotate_refresh_token(db: Session, raw_refresh: str) -> tuple[str, str, int] 
     )
     if row is None or row.created_at + REFRESH_TOKEN_TTL < now():
         return None
-    row.revoked_at = now()
+    return row
+
+
+def spend_refresh_token(db: Session, raw_refresh: str) -> tuple[str, str, int] | None:
+    """Refresh tokens are single use. The row is claimed in the same UPDATE
+    that reads it, so two requests racing the same token cannot both walk away
+    with a live pair — which is exactly the case where one of them is a thief."""
+    digest = hash_secret(raw_refresh)
+    claimed = (
+        db.query(OAuthToken)
+        .filter(
+            OAuthToken.refresh_token_hash == digest,
+            OAuthToken.revoked_at.is_(None),
+            OAuthToken.created_at > now() - REFRESH_TOKEN_TTL,
+        )
+        .update({OAuthToken.revoked_at: now()}, synchronize_session=False)
+    )
     db.commit()
+    if not claimed:
+        return None
+    row = (
+        db.query(OAuthToken).filter(OAuthToken.refresh_token_hash == digest).first()
+    )
+    if row is None:
+        return None
     return issue_tokens(db, client_id=row.client_id, user_id=row.user_id, scope=row.scope)
 
 

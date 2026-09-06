@@ -25,11 +25,13 @@ from oauth import (
     issue_code,
     issue_tokens,
     new_secret,
+    find_refresh_token,
     normalize_scope,
     now,
     public_api_url,
     public_app_url,
-    rotate_refresh_token,
+    redirect_with,
+    spend_refresh_token,
     verify_pkce,
 )
 
@@ -150,10 +152,13 @@ async def authorize(request: Request, db: Session = Depends(get_db)):
     state = params.get("state", "")
 
     def bounce(error: str, description: str) -> RedirectResponse:
-        query = urlencode(
-            {"error": error, "error_description": description, "state": state}
+        return RedirectResponse(
+            redirect_with(
+                redirect_uri,
+                {"error": error, "error_description": description, "state": state},
+            ),
+            status_code=302,
         )
-        return RedirectResponse(f"{redirect_uri}?{query}", status_code=302)
 
     if params.get("response_type") != "code":
         return bounce("unsupported_response_type", "Only response_type=code is supported")
@@ -162,6 +167,12 @@ async def authorize(request: Request, db: Session = Depends(get_db)):
     if params.get("code_challenge_method", "S256") != "S256":
         return bounce("invalid_request", "Only S256 PKCE is supported")
 
+    scope = normalize_scope(params.get("scope"))
+    if params.get("scope") and not scope:
+        return bounce(
+            "invalid_scope", f"Supported scopes are: {' '.join(SUPPORTED_SCOPES)}"
+        )
+
     consent = urlencode(
         {
             "client_id": client_id,
@@ -169,7 +180,7 @@ async def authorize(request: Request, db: Session = Depends(get_db)):
             "state": state,
             "code_challenge": params["code_challenge"],
             "code_challenge_method": "S256",
-            "scope": normalize_scope(params.get("scope")),
+            "scope": scope,
             "resource": params.get("resource", ""),
         }
     )
@@ -227,6 +238,10 @@ async def approve(
     if user is None:
         raise HTTPException(401, "Session is no longer valid")
 
+    scope = normalize_scope(body.scope)
+    if body.scope and not scope:
+        raise HTTPException(400, "None of the requested scopes are supported")
+
     code = issue_code(
         db,
         client=client,
@@ -234,11 +249,14 @@ async def approve(
         redirect_uri=body.redirect_uri,
         code_challenge=body.code_challenge,
         code_challenge_method=body.code_challenge_method,
-        scope=normalize_scope(body.scope),
+        scope=scope,
         resource=body.resource or None,
     )
-    query = urlencode({"code": code, "state": body.state})
-    return {"redirect_to": f"{body.redirect_uri}?{query}"}
+    return {
+        "redirect_to": redirect_with(
+            body.redirect_uri, {"code": code, "state": body.state}
+        )
+    }
 
 
 # ---------------------------------------------------------------------- token
@@ -264,14 +282,16 @@ async def deny(
         # nowhere safe to send the refusal; the app keeps the user instead
         return {"redirect_to": None}
 
-    query = urlencode(
-        {
-            "error": "access_denied",
-            "error_description": "The user declined the request",
-            "state": body.state,
-        }
-    )
-    return {"redirect_to": f"{body.redirect_uri}?{query}"}
+    return {
+        "redirect_to": redirect_with(
+            body.redirect_uri,
+            {
+                "error": "access_denied",
+                "error_description": "The user declined the request",
+                "state": body.state,
+            },
+        )
+    }
 
 
 @router.post("/oauth/token")
@@ -293,7 +313,23 @@ async def token(
     if grant_type == "refresh_token":
         if not refresh_token:
             return fail("invalid_request", "refresh_token is required")
-        rotated = rotate_refresh_token(db, refresh_token)
+
+        # authenticate before spending: a wrong secret must not burn the real
+        # client's token, and a confidential client's secret is required here
+        # just as it is on the code exchange
+        existing = find_refresh_token(db, refresh_token)
+        if existing is None:
+            return fail("invalid_grant", "Refresh token is expired or already used")
+        if client_id and client_id != existing.client_id:
+            return fail("invalid_grant", "Token was not issued to this client")
+        client = db.get(OAuthClient, existing.client_id)
+        if client is None:
+            return fail("invalid_client", "Client is no longer registered")
+        if client.client_secret_hash:
+            if not client_secret or hash_secret(client_secret) != client.client_secret_hash:
+                return fail("invalid_client", "Client authentication failed")
+
+        rotated = spend_refresh_token(db, refresh_token)
         if rotated is None:
             return fail("invalid_grant", "Refresh token is expired or already used")
         access, refresh, expires_in = rotated
@@ -302,6 +338,7 @@ async def token(
             "refresh_token": refresh,
             "token_type": "Bearer",
             "expires_in": expires_in,
+            "scope": existing.scope,
         }
 
     if grant_type != "authorization_code":

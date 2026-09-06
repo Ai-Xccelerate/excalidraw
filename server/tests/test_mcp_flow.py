@@ -319,6 +319,62 @@ ok &= check("deny returns access_denied to the registered redirect",
             denied_ok["redirect_to"].startswith("https://claude.ai/api/mcp/auth_callback?error=access_denied"),
             denied_ok)
 
+# 10c. an unknown scope must not escalate into every scope
+import oauth as oauth_mod
+ok &= check("only-unknown scopes grant nothing", oauth_mod.normalize_scope("wat") == "",
+            oauth_mod.normalize_scope("wat"))
+ok &= check("a partly-known scope keeps the known part",
+            oauth_mod.normalize_scope("wat drawings:read") == "drawings:read",
+            oauth_mod.normalize_scope("wat drawings:read"))
+bad_scope = client.get("/oauth/authorize", params={
+    "response_type": "code", "client_id": client_id,
+    "redirect_uri": "https://claude.ai/api/mcp/auth_callback",
+    "code_challenge": challenge, "code_challenge_method": "S256", "scope": "everything"})
+ok &= check("authorize refuses a scope it can grant nothing for",
+            "error=invalid_scope" in bad_scope.headers.get("location", ""),
+            bad_scope.headers.get("location"))
+
+# 10d. a callback that already has a query string still gets a readable code
+q_client = client.post("/oauth/register", json={
+    "client_name": "Tenanted", "redirect_uris": ["https://app.example/cb?tenant=acme"]}).json()
+q_approve = client.post("/api/oauth/approve", headers=AUTH, json={
+    "client_id": q_client["client_id"], "redirect_uri": "https://app.example/cb?tenant=acme",
+    "state": "s1", "code_challenge": challenge, "code_challenge_method": "S256",
+    "scope": "drawings:read", "resource": None}).json()
+from urllib.parse import urlsplit, parse_qs
+q_parsed = parse_qs(urlsplit(q_approve["redirect_to"]).query)
+ok &= check("an existing query string is preserved, not clobbered",
+            q_parsed.get("tenant") == ["acme"] and len(q_parsed.get("code", [])) == 1,
+            q_approve["redirect_to"])
+
+# 10e. a redirect_uri carrying a fragment is refused at registration
+frag = client.post("/oauth/register", json={
+    "client_name": "Fragment", "redirect_uris": ["https://app.example/cb#/route"]})
+ok &= check("a fragment in the callback is refused", frag.status_code == 400, frag.status_code)
+
+# 10f. a confidential client must authenticate to refresh
+conf = client.post("/oauth/register", json={
+    "client_name": "Confidential", "redirect_uris": ["https://conf.example/cb"],
+    "token_endpoint_auth_method": "client_secret_post"}).json()
+conf_approve = client.post("/api/oauth/approve", headers=AUTH, json={
+    "client_id": conf["client_id"], "redirect_uri": "https://conf.example/cb",
+    "state": "", "code_challenge": challenge, "code_challenge_method": "S256",
+    "scope": "drawings:read", "resource": None}).json()
+conf_code = parse_qs(urlsplit(conf_approve["redirect_to"]).query)["code"][0]
+conf_tok = client.post("/oauth/token", data={
+    "grant_type": "authorization_code", "code": conf_code,
+    "redirect_uri": "https://conf.example/cb", "client_id": conf["client_id"],
+    "client_secret": conf["client_secret"], "code_verifier": verifier}).json()
+no_secret = client.post("/oauth/token", data={
+    "grant_type": "refresh_token", "refresh_token": conf_tok["refresh_token"]})
+ok &= check("refresh without the client secret is refused", no_secret.status_code == 400,
+            no_secret.text)
+still_good = client.post("/oauth/token", data={
+    "grant_type": "refresh_token", "refresh_token": conf_tok["refresh_token"],
+    "client_id": conf["client_id"], "client_secret": conf["client_secret"]})
+ok &= check("a failed attempt did not burn the token", still_good.status_code == 200,
+            still_good.text)
+
 # 11. a refresh token can be spent once
 refreshed = client.post("/oauth/token", data={
     "grant_type": "refresh_token", "refresh_token": tok["refresh_token"]}).json()
@@ -326,6 +382,30 @@ ok &= check("refresh returns a new pair", refreshed.get("access_token", "").star
 reused = client.post("/oauth/token", data={
     "grant_type": "refresh_token", "refresh_token": tok["refresh_token"]})
 ok &= check("a spent refresh token is dead", reused.status_code == 400, reused.text)
+
+# 11b. two clients racing the same refresh token: exactly one wins
+race_tok = client.post("/oauth/token", data={
+    "grant_type": "authorization_code",
+    "code": parse_qs(urlsplit(client.post("/api/oauth/approve", headers=AUTH, json={
+        "client_id": client_id, "redirect_uri": "https://claude.ai/api/mcp/auth_callback",
+        "state": "", "code_challenge": challenge, "code_challenge_method": "S256",
+        "scope": "drawings:read", "resource": None}).json()["redirect_to"]).query)["code"][0],
+    "redirect_uri": "https://claude.ai/api/mcp/auth_callback",
+    "client_id": client_id, "code_verifier": verifier}).json()
+
+import threading
+outcomes: list[int] = []
+def redeem():
+    response = client.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": race_tok["refresh_token"]})
+    outcomes.append(response.status_code)
+threads = [threading.Thread(target=redeem) for _ in range(4)]
+for thread in threads:
+    thread.start()
+for thread in threads:
+    thread.join()
+ok &= check("only one of four concurrent redemptions succeeds",
+            outcomes.count(200) == 1, outcomes)
 
 # 12. settings page sees the connection, and revoking it cuts access
 conns = client.get("/api/settings/connections", headers=AUTH).json()
