@@ -11,10 +11,11 @@ would use and pick up the user's saved editor defaults, so what an agent draws
 matches what they draw.
 """
 
+import logging
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from db import get_db
@@ -22,6 +23,8 @@ from diagrams import MermaidError, build_flowchart, merged_defaults, parse_merma
 from models import Drawing, UserSettings
 from oauth import McpContext, get_mcp_context, public_app_url
 from services import ensure_personal_workspace
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["mcp"])
 
@@ -211,7 +214,10 @@ def _save(db: Session, ctx: McpContext, title: str, elements: list[dict]) -> Dra
 def _call_tool(name: str, args: dict, ctx: McpContext, db: Session) -> dict:
     if name == "list_drawings":
         ctx.require("drawings:read")
-        limit = min(int(args.get("limit", 20) or 20), 100)
+        try:
+            limit = min(max(int(args.get("limit") or 20), 1), 100)
+        except (TypeError, ValueError):
+            return _error("limit must be a number between 1 and 100")
         rows = (
             db.query(Drawing)
             .filter(Drawing.owner_id == ctx.user_id)
@@ -369,9 +375,20 @@ def _handle(message: dict, ctx: McpContext, db: Session) -> dict | None:
         args = params.get("arguments") or {}
         try:
             return _result(request_id, _call_tool(name, args, ctx, db))
-        except Exception as exc:  # a tool blowing up is a tool result, not a
-            # transport failure — the client should see why and can retry
-            return _result(request_id, _error(f"{name} failed: {exc}"))
+        except HTTPException as exc:
+            # a refused scope is worth saying plainly — the agent can act on it
+            db.rollback()
+            return _result(request_id, _error(str(exc.detail)))
+        except Exception:
+            # a tool blowing up is a tool result, not a transport failure, but
+            # the internals stay in the log: a half-finished transaction would
+            # otherwise poison the rest of a batch, and the message could carry
+            # more about the database than a client should see
+            db.rollback()
+            logger.exception("MCP tool %r failed", name)
+            return _result(
+                request_id, _error(f"{name} failed unexpectedly — it has been logged")
+            )
 
     return _rpc_error(request_id, -32601, f"Method not found: {method}")
 

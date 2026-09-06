@@ -290,6 +290,11 @@ bad_mermaid = rpc("tools/call", {"name": "create_mermaid_diagram", "arguments": 
 ok &= check("an unsupported diagram type is reported, not half-drawn",
             bad_mermaid["isError"] and "flowchart" in bad_mermaid["content"][0]["text"], bad_mermaid)
 
+# a bad argument is answered, not leaked as a python traceback string
+junk = rpc("tools/call", {"name": "list_drawings", "arguments": {"limit": "many"}})["result"]
+ok &= check("a bad argument gets a readable message",
+            "limit must be a number" in junk["content"][0]["text"], junk)
+
 listed = rpc("tools/call", {"name": "list_drawings", "arguments": {}})["result"]["content"][0]["text"]
 ok &= check("the drawings come back in list_drawings", "Onboarding" in listed and "Deal flow" in listed, listed)
 
@@ -406,6 +411,28 @@ for thread in threads:
     thread.join()
 ok &= check("only one of four concurrent redemptions succeeds",
             outcomes.count(200) == 1, outcomes)
+
+# 11c. a token only ever reaches its own account's drawings
+from models import User as UserModel
+from oauth import issue_tokens as _issue
+other = UserModel(email=f"other-{uuid.uuid4().hex[:6]}@example.com",
+                  password_hash=hash_password("supersecret1"))
+other.email_verified_at = datetime.now(timezone.utc)
+db.add(other); db.commit(); db.refresh(other)
+other_access, _, _ = _issue(db, client_id=client_id, user_id=other.id,
+                            scope="drawings:read drawings:write profile")
+other_headers = {"Authorization": f"Bearer {other_access}"}
+stolen = client.post("/mcp", headers=other_headers, json={
+    "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+    "params": {"name": "get_drawing", "arguments": {"drawing_id": drawing_id}}}).json()
+ok &= check("another account's drawing is invisible even with its id",
+            stolen["result"]["isError"], stolen)
+their_list = client.post("/mcp", headers=other_headers, json={
+    "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+    "params": {"name": "list_drawings", "arguments": {}}}).json()
+ok &= check("and it is not in their listing",
+            "Onboarding" not in their_list["result"]["content"][0]["text"],
+            their_list["result"]["content"][0]["text"])
 
 # 12. settings page sees the connection, and revoking it cuts access
 conns = client.get("/api/settings/connections", headers=AUTH).json()
