@@ -96,6 +96,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
+    <!-- Figtree is the AIX brand font. Without this the preconnects above were
+         warming a connection nothing ever used, so every "Figtree" rule fell
+         through to the browser default (serif) on the app-chrome screens. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap"
+    />
+
     <!------------------------------------------------------------------------->
     <% if (typeof PROD != 'undefined' && PROD == true) { %>
     <script>

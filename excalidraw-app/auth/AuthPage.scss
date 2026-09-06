@@ -5,6 +5,10 @@
   display: grid;
   grid-template-columns: minmax(0, 22rem) 1fr;
   min-height: 100vh;
+  // set explicitly: this screen renders outside the editor's font scope, so
+  // without it everything inherits the browser default and comes out serif
+  font-family: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
   color: var(--aix-ink);
   background: #fff;
 
@@ -114,6 +118,12 @@
     max-width: 70%;
     margin: 0 auto 0.5rem;
     object-fit: contain;
+  }
+
+  input,
+  button,
+  select {
+    font-family: inherit;
   }
 
   &__title {

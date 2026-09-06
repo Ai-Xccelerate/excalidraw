@@ -1436,7 +1436,14 @@ const RootView = ({ canvas }: { canvas: React.ReactNode }) => {
   if (!isLoaded) {
     return null;
   }
-  if (!isSignedIn && (pathname === "/dashboard" || pathname === "/login")) {
+  // the bare root is the front door: a signed-out visitor gets the sign-in
+  // screen rather than an anonymous canvas. Deep links are deliberately not
+  // gated here — /d/:id, collab #room links and shared scenes carry a hash or
+  // search and still open for a signed-out visitor.
+  if (
+    !isSignedIn &&
+    (isBareRoot || pathname === "/dashboard" || pathname === "/login")
+  ) {
     return <AuthPage />;
   }
   if (pathname === "/dashboard") {

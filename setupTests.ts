@@ -32,6 +32,14 @@ if (!debugDom) {
   });
 }
 
+// The bare root is the app's sign-in front door, and "/dashboard" is the
+// dashboard, so editor tests rendering <ExcalidrawApp /> at jsdom's default
+// "/" would land on the sign-in screen instead of the canvas. Park them on a
+// path that falls through to the editor -- the canvas is the routing fallback
+// in production too. Anything outside /d/<id> loads the local scene, so this
+// still makes no network call.
+window.history.replaceState({}, "", "/editor");
+
 vi.mock("@excalidraw/common", async (importOriginal) => {
   const module = await importOriginal<typeof import("@excalidraw/common")>();
 
