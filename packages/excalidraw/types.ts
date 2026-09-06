@@ -9,7 +9,7 @@ import type {
 
 import type { LinearElementEditor } from "@excalidraw/element";
 
-import type { MaybeTransformHandleType } from "@excalidraw/element";
+import type { Connector, MaybeTransformHandleType } from "@excalidraw/element";
 
 import type {
   PointerType,
@@ -886,6 +886,14 @@ export type PointerDownState = Readonly<{
     arrowDirection: "origin" | "end";
     // This is a center point of selected elements determined on the initial pointer down event (for rotation only)
     center: { x: number; y: number };
+  };
+  // set when the pointer went down on one of a selected shape's connector
+  // dots; the arrow itself is only created once the pointer actually drags
+  connectorDrag: {
+    source: NonDeleted<ExcalidrawBindableElement> | null;
+    connector: Connector | null;
+    event: React.PointerEvent<HTMLElement> | null;
+    started: boolean;
   };
   hit: {
     // The element the pointer is "hitting", is determined on the initial

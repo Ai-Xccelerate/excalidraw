@@ -83,6 +83,11 @@
     }
   }
 
+  // clear the topbar band (logo + drawing name) before the menu panel starts
+  .dropdown-menu.main-menu {
+    margin-top: 0.5rem;
+  }
+
   .alert {
     pointer-events: none;
     position: absolute;
@@ -120,17 +125,26 @@
 }
 
 .aix-topbar {
+  // the editor's geometry tokens are scoped to .excalidraw and can't be read
+  // from here, so mirror them: the band is the hamburger button's own box
+  // (--lg-button-size) sitting at the editor container padding.
+  --aix-band: 2.25rem;
+  --aix-gutter: 1rem;
+
   position: absolute;
-  // pin to the hamburger's band (top:1rem, 2.25rem tall) and center children
-  // within it, so the logo and title box line up with the hamburger button
-  top: 1rem;
-  height: 2.25rem;
-  left: calc(1rem + 2.25rem + 0.75rem);
+  top: var(--aix-gutter);
+  height: var(--aix-band);
+  left: calc(var(--aix-gutter) + var(--aix-band) + 0.75rem);
   z-index: 3;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   max-width: 40vw;
+
+  // matches the editor bumping --lg-button-size on very wide displays
+  @media screen and (min-device-width: 1921px) {
+    --aix-band: 2.5rem;
+  }
 
   @media (max-width: 640px) {
     display: none;
@@ -138,6 +152,7 @@
 }
 
 .aix-app-logo {
+  display: block; // avoids the inline-image baseline gap throwing off centering
   height: 1.75rem;
   width: auto;
   pointer-events: none;
@@ -150,6 +165,7 @@
     cursor: pointer;
 
     img {
+      display: block;
       height: 1.75rem;
       width: auto;
       user-select: none;
@@ -163,14 +179,16 @@ $aix-title-font: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto,
 .aix-drawing-title {
   display: flex;
   align-items: center;
-  height: 2.25rem; // match the hamburger/logo band exactly
+  height: var(--aix-band, 2.25rem); // match the hamburger band exactly
   pointer-events: auto;
   max-width: 28vw;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  // light hairline box so it reads clearly as the file's name
-  border: 1px solid var(--default-border-color, #e4e4e7);
+  box-sizing: border-box;
+  // hairline box so it reads clearly as the file's name
+  border: 1px solid #c8c8d0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   background: var(--island-bg-color, #fff);
   cursor: text;
   padding: 0 12px;
@@ -187,7 +205,8 @@ $aix-title-font: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto,
 
   &__input {
     pointer-events: auto;
-    height: 2.25rem;
+    box-sizing: border-box;
+    height: var(--aix-band, 2.25rem);
     padding: 0 11px;
     border: 1px solid #ec7200;
     border-radius: 8px;
@@ -213,7 +232,7 @@ $aix-title-font: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto,
   font-size: 0.8333rem;
   font-weight: 600;
   color: #fff !important;
-  background: linear-gradient(135deg, #6965db 0%, #4a45c7 100%);
+  background: linear-gradient(135deg, #ec7200 0%, #c65c00 100%);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   transition: transform 0.1s ease, box-shadow 0.1s ease, filter 0.1s ease;
 

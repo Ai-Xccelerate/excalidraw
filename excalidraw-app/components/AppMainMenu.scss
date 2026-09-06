@@ -1,15 +1,32 @@
 .aix-account-menu {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0.5rem;
   width: 100%;
-  font-size: 0.75rem;
+  padding: 0.25rem 0 0.125rem;
+
+  &__label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-gray-50, #adb5bd);
+  }
 
   &__email {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--color-gray-60, #767676);
+    font-size: 0.8125rem;
+    line-height: 1.2;
+    color: var(--text-primary-color);
+  }
+
+  &__identity {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
   }
 }

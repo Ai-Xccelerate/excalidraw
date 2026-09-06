@@ -52,7 +52,8 @@ const transformHandleSizes: { [k in PointerType]: number } = {
   touch: 28,
 };
 
-const ROTATION_RESIZE_HANDLE_GAP = 16;
+// keeps the corner-placed rotation handle just clear of the nw resize handle
+const ROTATION_HANDLE_CORNER_GAP = 11;
 
 export const DEFAULT_OMIT_SIDES = {
   e: true,
@@ -196,15 +197,21 @@ export const getTransformHandlesFromCoords = (
           cy,
           angle,
         ),
+    // sits diagonally outside the top-left corner, clear of the nw resize
+    // handle rather than floating above the top edge
     rotation: omitSides.rotation
       ? undefined
       : generateTransformHandle(
-          x1 + width / 2 - handleWidth / 2,
+          x1 -
+            dashedLineMargin -
+            handleMarginX +
+            centeringOffset -
+            ROTATION_HANDLE_CORNER_GAP / zoom.value,
           y1 -
             dashedLineMargin -
             handleMarginY +
             centeringOffset -
-            ROTATION_RESIZE_HANDLE_GAP / zoom.value,
+            ROTATION_HANDLE_CORNER_GAP / zoom.value,
           handleWidth,
           handleHeight,
           cx,

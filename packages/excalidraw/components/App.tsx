@@ -76,7 +76,6 @@ import {
   wrapEvent,
   updateObject,
   updateActiveTool,
-  isTransparent,
   muteFSAbortError,
   isTestEnv,
   isDevEnv,
@@ -243,7 +242,11 @@ import {
   type ApplyToOptions,
   positionElementsOnGrid,
   calculateFixedPointForNonElbowArrowBinding,
+  bindBindingElement,
   bindOrUnbindBindingElement,
+  canHaveConnectors,
+  CONNECTOR_DRAG_THRESHOLD,
+  getConnectorAtPoint,
   mutateElement,
   getElementBounds,
   doBoundsIntersect,
@@ -5944,6 +5947,7 @@ class App extends React.Component<AppProps, AppState> {
         frameNameBound: isFrameLikeElement(elementWithHighestZIndex)
           ? this.frameNameBoundsCache.get(elementWithHighestZIndex)
           : null,
+        overrideShouldTestInside: hasBackground(elementWithHighestZIndex.type),
       })
         ? elementWithHighestZIndex
         : allHitElements[allHitElements.length - 2];
@@ -6060,6 +6064,11 @@ class App extends React.Component<AppProps, AppState> {
       frameNameBound: isFrameLikeElement(element)
         ? this.frameNameBoundsCache.get(element)
         : null,
+      // pointer interactions treat a shape as its whole area, so a hollow
+      // shape can be picked up from the middle and not just by its stroke.
+      // Limited to shapes that can be filled — frames still hit on their
+      // border only, and arrows never gain an interior.
+      overrideShouldTestInside: hasBackground(element.type),
     });
   }
 
@@ -6508,12 +6517,14 @@ class App extends React.Component<AppProps, AppState> {
         if (container) {
           if (
             hasBoundTextElement(container) ||
-            !isTransparent(container.backgroundColor) ||
             hitElementItself({
               point: pointFrom(sceneX, sceneY),
               element: container,
               elementsMap: this.scene.getNonDeletedElementsMap(),
               threshold: this.getElementHitThreshold(container),
+              // anywhere inside the shape counts, so the text lands in the
+              // middle and bound to it rather than free-floating at the cursor
+              overrideShouldTestInside: hasBackground(container.type),
             })
           ) {
             const midPoint = getContainerCenter(
@@ -7820,6 +7831,8 @@ class App extends React.Component<AppProps, AppState> {
 
     this.clearSelectionIfNotUsingSelection();
 
+    this.maybeRecordConnectorDrag(event, pointerDownState);
+
     if (this.handleSelectionOnPointerDown(event, pointerDownState)) {
       return;
     }
@@ -8398,6 +8411,12 @@ class App extends React.Component<AppProps, AppState> {
         arrowDirection: "origin",
         center: { x: (maxX + minX) / 2, y: (maxY + minY) / 2 },
       },
+      connectorDrag: {
+        source: null,
+        connector: null,
+        event: null,
+        started: false,
+      },
       hit: {
         element: null,
         allHitElements: [],
@@ -8477,6 +8496,135 @@ class App extends React.Component<AppProps, AppState> {
         activeEmbeddable: null,
       });
     }
+  };
+
+  /** Notes that the pointer went down on one of a selected shape's connector
+   * dots. The arrow is only created once the pointer actually drags, so a
+   * stray click near a dot still behaves like a normal click. */
+  private maybeRecordConnectorDrag = (
+    event: React.PointerEvent<HTMLElement>,
+    pointerDownState: PointerDownState,
+  ): void => {
+    if (
+      !isSelectionLikeTool(this.state.activeTool.type) ||
+      this.state.viewModeEnabled ||
+      this.state.editingTextElement ||
+      this.state.selectedLinearElement?.isEditing ||
+      this.state.multiElement ||
+      event.button !== POINTER_BUTTON.MAIN
+    ) {
+      return;
+    }
+
+    const selectedElements = this.scene.getSelectedElements(this.state);
+    const element = selectedElements[0];
+
+    if (
+      selectedElements.length !== 1 ||
+      !canHaveConnectors(element) ||
+      element.locked
+    ) {
+      return;
+    }
+
+    const elementsMap = this.scene.getNonDeletedElementsMap();
+
+    // resizing and rotating win over the connector dots where the two
+    // hit areas graze each other
+    if (
+      getElementWithTransformHandleType(
+        this.scene.getNonDeletedElements(),
+        this.state,
+        pointerDownState.origin.x,
+        pointerDownState.origin.y,
+        this.state.zoom,
+        event.pointerType,
+        elementsMap,
+        this.editorInterface,
+      ) != null
+    ) {
+      return;
+    }
+
+    const connector = getConnectorAtPoint(
+      pointFrom<GlobalPoint>(
+        pointerDownState.origin.x,
+        pointerDownState.origin.y,
+      ),
+      element,
+      elementsMap,
+      this.state.zoom,
+    );
+
+    if (connector) {
+      pointerDownState.connectorDrag.source = element;
+      pointerDownState.connectorDrag.connector = connector;
+      pointerDownState.connectorDrag.event = event;
+    }
+  };
+
+  /** Turns a recorded connector press into an actual arrow, once the pointer
+   * has moved far enough to read as a drag rather than a click. */
+  private maybeStartConnectorArrow = (
+    pointerDownState: PointerDownState,
+    pointerCoords: { x: number; y: number },
+  ): boolean => {
+    const { source, connector, event, started } =
+      pointerDownState.connectorDrag;
+
+    if (
+      started ||
+      !source ||
+      !connector ||
+      !event ||
+      // a press that landed on an element drags that element instead
+      pointerDownState.hit.element ||
+      source.isDeleted
+    ) {
+      return false;
+    }
+
+    const dragDistance =
+      pointDistance(
+        pointFrom(pointerCoords.x, pointerCoords.y),
+        pointFrom(pointerDownState.origin.x, pointerDownState.origin.y),
+      ) * this.state.zoom.value;
+
+    if (dragDistance < CONNECTOR_DRAG_THRESHOLD) {
+      return false;
+    }
+
+    pointerDownState.connectorDrag.started = true;
+
+    // the press may have opened a selection box before we knew it was a drag
+    flushSync(() => {
+      this.setState({ selectionElement: null });
+    });
+
+    this.handleLinearElementOnPointerDown(event, "arrow", pointerDownState);
+
+    const arrow = this.state.newElement;
+
+    if (!arrow || !isArrowElement(arrow)) {
+      return false;
+    }
+
+    // start the arrow on the outline rather than on the dot, which floats
+    // outside the shape, and pin the binding to that side
+    this.scene.mutateElement(arrow, {
+      x: connector.point[0],
+      y: connector.point[1],
+    });
+    bindBindingElement(
+      arrow,
+      source,
+      "orbit",
+      "start",
+      this.scene,
+      connector.point,
+    );
+
+    return true;
   };
 
   /**
@@ -10344,6 +10492,8 @@ class App extends React.Component<AppProps, AppState> {
         }
       }
 
+      this.maybeStartConnectorArrow(pointerDownState, pointerCoords);
+
       if (this.state.selectionElement) {
         pointerDownState.lastCoords.x = pointerCoords.x;
         pointerDownState.lastCoords.y = pointerCoords.y;
@@ -10476,7 +10626,12 @@ class App extends React.Component<AppProps, AppState> {
         }
       }
 
-      if (this.state.activeTool.type === "selection") {
+      // `newElement` under the selection tool means an arrow pulled out of a
+      // connector dot — that drag is not a box selection
+      if (
+        this.state.activeTool.type === "selection" &&
+        !this.state.newElement
+      ) {
         pointerDownState.boxSelection.hasOccurred = true;
 
         const elements = this.scene.getNonDeletedElements();

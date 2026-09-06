@@ -21,9 +21,12 @@ import {
 } from "@excalidraw/common";
 
 import {
+  canHaveConnectors,
+  CONNECTOR_HANDLE_RADIUS,
   deconstructDiamondElement,
   deconstructRectanguloidElement,
   elementCenterPoint,
+  getConnectors,
   getDiamondBaseCorners,
   FOCUS_POINT_SIZE,
   getOmitSidesForEditorInterface,
@@ -1342,6 +1345,59 @@ const renderFocusPointIndicator = ({
   }
 };
 
+/** Rotation handle: a rounded tile carrying a circular arrow, so it reads as
+ * "rotate" rather than as one more resize dot. */
+const renderRotationHandle = (
+  context: CanvasRenderingContext2D,
+  appState: InteractiveCanvasAppState,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  angle: number,
+) => {
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const radius = (width / 2) * 0.55;
+
+  context.save();
+  context.translate(cx, cy);
+  context.rotate(angle);
+
+  const tileRadius = 3 / appState.zoom.value;
+  context.beginPath();
+  if (context.roundRect) {
+    context.roundRect(-width / 2, -height / 2, width, height, tileRadius);
+  } else {
+    context.rect(-width / 2, -height / 2, width, height);
+  }
+  context.fill();
+  context.stroke();
+
+  // the tile is filled white, so the glyph takes the selection color
+  context.fillStyle = context.strokeStyle;
+  context.lineWidth = 1.25 / appState.zoom.value;
+  context.lineCap = "round";
+
+  const gapStart = -Math.PI / 3;
+  context.beginPath();
+  context.arc(0, 0, radius, gapStart, gapStart + (Math.PI * 3) / 2);
+  context.stroke();
+
+  // arrowhead closing the loop
+  const tipAngle = gapStart + (Math.PI * 3) / 2;
+  const tip = [Math.cos(tipAngle) * radius, Math.sin(tipAngle) * radius];
+  const head = 2.25 / appState.zoom.value;
+  context.beginPath();
+  context.moveTo(tip[0] - head, tip[1]);
+  context.lineTo(tip[0] + head, tip[1]);
+  context.lineTo(tip[0], tip[1] + head * 1.4);
+  context.closePath();
+  context.fill();
+
+  context.restore();
+};
+
 const renderTransformHandles = (
   context: CanvasRenderingContext2D,
   renderConfig: InteractiveCanvasRenderConfig,
@@ -1360,7 +1416,7 @@ const renderTransformHandles = (
         context.strokeStyle = renderConfig.selectionColor;
       }
       if (key === "rotation") {
-        fillCircle(context, x + width / 2, y + height / 2, width / 2, true);
+        renderRotationHandle(context, appState, x, y, width, height, angle);
         // prefer round corners if roundRect API is available
       } else if (context.roundRect) {
         context.beginPath();
@@ -1383,6 +1439,35 @@ const renderTransformHandles = (
       context.restore();
     }
   });
+};
+
+/** The four side dots an arrow can be dragged out of. They double as the
+ * snap targets other arrows land on. */
+const renderConnectorHandles = (
+  context: CanvasRenderingContext2D,
+  appState: InteractiveCanvasAppState,
+  element: ExcalidrawBindableElement,
+  elementsMap: ElementsMap,
+  selectionColor: string,
+): void => {
+  const radius = CONNECTOR_HANDLE_RADIUS / appState.zoom.value;
+
+  context.save();
+  context.lineWidth = 1 / appState.zoom.value;
+  context.strokeStyle = selectionColor;
+  context.fillStyle = selectionColor;
+
+  for (const connector of getConnectors(element, elementsMap, appState.zoom)) {
+    fillCircle(
+      context,
+      connector.handle[0],
+      connector.handle[1],
+      radius,
+      false,
+    );
+  }
+
+  context.restore();
 };
 
 const renderCropHandles = (
@@ -1918,6 +2003,16 @@ const _renderInteractiveScene = ({
           transformHandles,
           selectedElements[0].angle,
         );
+
+        if (canHaveConnectors(selectedElements[0])) {
+          renderConnectorHandles(
+            context,
+            appState,
+            selectedElements[0],
+            elementsMap,
+            selectionColor,
+          );
+        }
       }
 
       if (appState.croppingElementId && !appState.isCropping) {

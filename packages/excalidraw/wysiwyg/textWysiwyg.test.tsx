@@ -897,27 +897,16 @@ describe("textWysiwyg", () => {
       });
       API.setElements([rectangle]);
 
+      // off-center counts as inside the container, same as a filled one
       mouse.doubleClickAt(rectangle.x + 10, rectangle.y + 10);
       expect(h.elements.length).toBe(2);
-      let text = h.elements[1] as ExcalidrawTextElementWithContainer;
-      expect(text.type).toBe("text");
-      expect(text.containerId).toBe(null);
-      mouse.down();
-      let editor = await getTextEditor();
-      Keyboard.exitTextEditor(editor);
 
-      mouse.doubleClickAt(
-        rectangle.x + rectangle.width / 2,
-        rectangle.y + rectangle.height / 2,
-      );
-      expect(h.elements.length).toBe(3);
-
-      text = h.elements[1] as ExcalidrawTextElementWithContainer;
+      const text = h.elements[1] as ExcalidrawTextElementWithContainer;
       expect(text.type).toBe("text");
       expect(text.containerId).toBe(rectangle.id);
 
       mouse.down();
-      editor = await getTextEditor();
+      const editor = await getTextEditor();
 
       updateTextEditor(editor, "Hello World!");
       Keyboard.exitTextEditor(editor);
@@ -1017,7 +1006,7 @@ describe("textWysiwyg", () => {
       });
     });
 
-    it("should'nt bind text to container when not double clicked on center", async () => {
+    it("should bind text to container when double clicked off its center", async () => {
       expect(h.elements.length).toBe(1);
       expect(h.elements[0].id).toBe(rectangle.id);
 
@@ -1027,14 +1016,16 @@ describe("textWysiwyg", () => {
 
       const text = h.elements[1] as ExcalidrawTextElementWithContainer;
       expect(text.type).toBe("text");
-      expect(text.containerId).toBe(null);
+      expect(text.containerId).toBe(rectangle.id);
       mouse.down();
       const editor = await getTextEditor();
 
       updateTextEditor(editor, "Hello World!");
 
       Keyboard.exitTextEditor(editor);
-      expect(rectangle.boundElements).toBe(null);
+      expect(rectangle.boundElements).toStrictEqual([
+        { id: text.id, type: "text" },
+      ]);
     });
 
     it("should bind text to container when triggered via context menu", async () => {

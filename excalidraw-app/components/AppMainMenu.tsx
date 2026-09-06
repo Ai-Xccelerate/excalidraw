@@ -23,6 +23,8 @@ import { LanguageList } from "../app-language/LanguageList";
 
 import { saveDebugState } from "./DebugCanvas";
 
+import "./AppMainMenu.scss";
+
 /** first-party email + password auth is always available */
 const AUTH_ENABLED = true;
 
@@ -143,7 +145,12 @@ const AccountMenuItem = () => {
   const { user, logout } = useAuth();
   return (
     <div className="aix-account-menu">
-      <span className="aix-account-menu__email">{user?.email}</span>
+      <div className="aix-account-menu__identity">
+        <span className="aix-account-menu__label">Signed in as</span>
+        <span className="aix-account-menu__email" title={user?.email}>
+          {user?.email}
+        </span>
+      </div>
       <button className="aix-sign-in-button" onClick={logout}>
         Sign out
       </button>

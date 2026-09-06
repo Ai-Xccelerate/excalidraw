@@ -534,7 +534,9 @@ describe("regression tests", () => {
       expect(element.groupIds.length).toBe(1);
     }
 
-    mouse.moveTo(-10, -10); // the NW resizing handle is at [0, 0], so moving further
+    // clear of both the NW resizing handle and the rotation handle, which
+    // sits diagonally outside that corner
+    mouse.moveTo(-30, -30);
     mouse.down();
     mouse.move(-1000, -1000);
     mouse.restorePosition(end[0] + 3, end[1] + 3);

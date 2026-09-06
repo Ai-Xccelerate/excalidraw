@@ -412,7 +412,9 @@ describe("box-selection overlap mode", () => {
     ).toEqual([outerNested1.id, outerOnly.id, outerNested2.id]);
   });
 
-  it("should not select a transparent rectangle when the selection box stays inside it", () => {
+  // a hollow shape is grabbed by its interior, so a drag starting inside one
+  // picks up the shape instead of opening a selection box within it
+  it("should select a transparent rectangle when the drag starts inside it", () => {
     const rect1 = API.createElement({
       type: "rectangle",
       x: 0,
@@ -427,7 +429,7 @@ describe("box-selection overlap mode", () => {
 
     boxSelect(25, 25, 75, 75);
 
-    assertSelectedElements([]);
+    assertSelectedElements([rect1.id]);
   });
 
   it("should select a transparent rectangle when the selection box crosses its outline", () => {
@@ -448,7 +450,7 @@ describe("box-selection overlap mode", () => {
     assertSelectedElements([rect1.id]);
   });
 
-  it("should not select a rotated transparent rectangle when the selection box stays inside it", () => {
+  it("should select a rotated transparent rectangle when the drag starts inside it", () => {
     const rect1 = API.createElement({
       type: "rectangle",
       x: 0,
@@ -464,7 +466,7 @@ describe("box-selection overlap mode", () => {
 
     boxSelect(40, 40, 60, 60);
 
-    assertSelectedElements([]);
+    assertSelectedElements([rect1.id]);
   });
 
   it("should select a rotated rounded rectangle when the selection box contains its outline but not its bounds", () => {
@@ -731,7 +733,7 @@ describe("box-selection overlap mode", () => {
     assertSelectedElements([]);
   });
 
-  it("should not select a transparent framed element when the selection box stays inside its clipped bounds", () => {
+  it("should select a transparent framed element when the drag starts inside its clipped bounds", () => {
     const frame = API.createElement({
       type: "frame",
       x: 0,
@@ -756,7 +758,7 @@ describe("box-selection overlap mode", () => {
 
     boxSelect(60, 20, 90, 60);
 
-    assertSelectedElements([]);
+    assertSelectedElements([rect1.id]);
   });
 
   it("should not select a framed element when selection only overlaps its clipped-out outline", () => {
