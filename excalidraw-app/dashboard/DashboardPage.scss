@@ -52,25 +52,124 @@ $hover: #f4f4f7;
     border-top: 1px solid $line;
   }
 
-  &__workspace {
-    padding: 2px 6px;
+  &__bottom {
+    gap: 10px;
+    padding-top: 12px;
+  }
+}
 
-    // keep the workspace picker compact
-    .cl-organizationSwitcherTrigger {
-      width: 100%;
-      justify-content: flex-start;
-      padding: 6px 8px;
-      border-radius: 8px;
-    }
+.aix-workspace-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  &__label {
+    padding-left: 2px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: $muted;
   }
 
-  &__user {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 8px;
+  &__select {
+    width: 100%;
+    // the native arrow sits too far from the text on a narrow control
+    appearance: none;
+    padding: 7px 28px 7px 10px;
+    border: 1px solid $line;
+    border-radius: 8px;
+    background-color: #fff;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8a94' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    font-family: inherit;
     font-size: 13px;
     font-weight: 500;
+    color: $ink;
+    cursor: pointer;
+
+    &:hover {
+      border-color: #d9d9e3;
+    }
+
+    &:focus-visible {
+      outline: none;
+      border-color: $aix-orange;
+      box-shadow: 0 0 0 3px rgba($aix-orange, 0.15);
+    }
+  }
+}
+
+.aix-account {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 6px 6px 4px;
+  border-radius: 10px;
+
+  &:hover {
+    background: $hover;
+  }
+
+  &__avatar {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: rgba($aix-orange, 0.12);
+    color: $aix-orange;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  &__identity {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.25;
+  }
+
+  &__name {
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__email {
+    font-size: 11px;
+    color: $muted;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__actions {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+  }
+}
+
+.aix-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: $muted;
+  cursor: pointer;
+
+  &:hover {
+    background: #fff;
+    color: $aix-orange;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   }
 }
 

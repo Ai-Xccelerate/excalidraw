@@ -206,3 +206,84 @@ class PendingInvite(Base):
     invited_at: Mapped[datetime] = mapped_column(default=_now)
 
     drawing: Mapped["Drawing"] = relationship(back_populates="pending_invites")
+
+
+class UserSettings(Base):
+    """Per-user preferences. Kept in two JSON blobs rather than a column per
+    switch so adding a preference doesn't need a migration; both are free-form
+    and validated at the API edge."""
+
+    __tablename__ = "user_settings"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    notifications: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # editor defaults (font, stroke width, arrow type, ...) applied to new
+    # elements when the canvas loads
+    editor_defaults: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
+
+class OAuthClient(Base):
+    """An MCP client registered against this server, normally through dynamic
+    client registration (RFC 7591). Public clients (Claude, ChatGPT and other
+    MCP hosts) hold no secret and are pinned to their redirect URIs + PKCE
+    instead."""
+
+    __tablename__ = "oauth_clients"
+
+    client_id: Mapped[str] = mapped_column(String, primary_key=True)
+    # null for public clients; otherwise the SHA-256 of the issued secret
+    client_secret_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    client_name: Mapped[str] = mapped_column(String, default="MCP client")
+    redirect_uris: Mapped[list] = mapped_column(JSONB, default=list)
+    grant_types: Mapped[list] = mapped_column(JSONB, default=list)
+    scope: Mapped[str] = mapped_column(String, default="")
+    client_uri: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class OAuthAuthorizationCode(Base):
+    """Single-use authorization code. Only its hash is stored, and the PKCE
+    challenge is required, so an intercepted code is useless without the
+    verifier held by the client that started the flow."""
+
+    __tablename__ = "oauth_authorization_codes"
+
+    code_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    client_id: Mapped[str] = mapped_column(
+        ForeignKey("oauth_clients.client_id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    redirect_uri: Mapped[str] = mapped_column(String, nullable=False)
+    code_challenge: Mapped[str] = mapped_column(String, nullable=False)
+    code_challenge_method: Mapped[str] = mapped_column(String, default="S256")
+    scope: Mapped[str] = mapped_column(String, default="")
+    resource: Mapped[str | None] = mapped_column(String, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class OAuthToken(Base):
+    """An issued access/refresh token pair. Hashes only, same reasoning as the
+    reset tokens: a database leak must not hand out live sessions."""
+
+    __tablename__ = "oauth_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    access_token_hash: Mapped[str] = mapped_column(String, unique=True, index=True)
+    refresh_token_hash: Mapped[str | None] = mapped_column(String, unique=True, index=True)
+    client_id: Mapped[str] = mapped_column(
+        ForeignKey("oauth_clients.client_id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    scope: Mapped[str] = mapped_column(String, default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

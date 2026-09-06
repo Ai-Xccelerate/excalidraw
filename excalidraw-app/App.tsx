@@ -125,8 +125,16 @@ import {
 } from "./data/localStorage";
 
 import { loadFilesFromFirebase } from "./data/firebase";
-import { currentDrawingIdAtom, getDrawing, saveDrawing } from "./data/backend";
+import {
+  currentDrawingIdAtom,
+  getDrawing,
+  getSettings,
+  saveDrawing,
+} from "./data/backend";
 import { DashboardPage } from "./dashboard/DashboardPage";
+import { editorDefaultsToAppState } from "./settings/editorDefaults";
+import SettingsPage from "./settings/SettingsPage";
+import OAuthConsentPage from "./settings/OAuthConsentPage";
 import { AixFilesSidebar } from "./components/AixFilesSidebar";
 import {
   LibraryIndexedDBAdapter,
@@ -535,6 +543,32 @@ const ExcalidrawWrapper = () => {
   });
 
   const [, forceRefresh] = useState(false);
+
+  // the user's saved drawing defaults, so a new shape on this canvas looks like
+  // the ones they set in Settings (and like the ones agents draw over MCP)
+  useEffect(() => {
+    if (!excalidrawAPI || !AUTH_ENABLED) {
+      return;
+    }
+    let cancelled = false;
+    getSettings()
+      .then(({ editor_defaults: defaults }) => {
+        if (cancelled) {
+          return;
+        }
+        excalidrawAPI.updateScene({
+          appState: editorDefaultsToAppState(defaults),
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+      })
+      .catch(() => {
+        // preferences are a nicety; a failed fetch should never keep the
+        // canvas from opening
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [excalidrawAPI]);
 
   useEffect(() => {
     if (isDevEnv()) {
@@ -1443,12 +1477,23 @@ const RootView = ({ canvas }: { canvas: React.ReactNode }) => {
   // search and still open for a signed-out visitor.
   if (
     !isSignedIn &&
-    (isBareRoot || pathname === "/dashboard" || pathname === "/login")
+    (isBareRoot ||
+      pathname === "/dashboard" ||
+      pathname === "/settings" ||
+      pathname === "/oauth/consent" ||
+      pathname === "/login")
   ) {
     return <AuthPage />;
   }
   if (pathname === "/dashboard") {
     return <DashboardPage />;
+  }
+  if (pathname === "/settings") {
+    return <SettingsPage />;
+  }
+  // an agent sent the user here to approve an MCP connection
+  if (pathname === "/oauth/consent") {
+    return <OAuthConsentPage />;
   }
   return <>{canvas}</>;
 };

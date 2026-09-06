@@ -410,3 +410,104 @@ export const loadDrawing = async (
   drawingId: string,
   _socket?: Socket,
 ): Promise<DrawingRecord> => getDrawing(drawingId);
+
+// ---------------------------------------------------------------- settings
+
+export type EditorDefaults = {
+  font_family: "hand-drawn" | "normal" | "code";
+  font_size: number;
+  stroke_color: string;
+  background_color: string;
+  fill_style: "hachure" | "cross-hatch" | "solid";
+  stroke_width: number;
+  stroke_style: "solid" | "dashed" | "dotted";
+  roughness: number;
+  edges: "sharp" | "round";
+  arrow_type: "sharp" | "round" | "elbow";
+  node_shape: "rectangle" | "ellipse" | "diamond";
+};
+
+export type NotificationSettings = {
+  product_updates: boolean;
+  collaboration_invites: boolean;
+  comment_mentions: boolean;
+  weekly_digest: boolean;
+  security_alerts: boolean;
+};
+
+export type UserSettings = {
+  email: string;
+  username: string | null;
+  email_verified: boolean;
+  notifications: NotificationSettings;
+  editor_defaults: EditorDefaults;
+  mcp_endpoint: string;
+};
+
+export type McpConnection = {
+  client_id: string;
+  client_name: string;
+  client_uri: string | null;
+  scope: string;
+  connected_at: string;
+  last_used_at: string | null;
+  expires_at: string;
+};
+
+export const getSettings = (): Promise<UserSettings> =>
+  apiFetch("/api/settings");
+
+export const updateProfile = (username: string): Promise<UserSettings> =>
+  apiFetch("/api/settings/profile", {
+    method: "PATCH",
+    body: JSON.stringify({ username }),
+  });
+
+export const updateNotifications = (
+  notifications: Partial<NotificationSettings>,
+): Promise<UserSettings> =>
+  apiFetch("/api/settings/notifications", {
+    method: "PATCH",
+    body: JSON.stringify({ notifications }),
+  });
+
+export const updateEditorDefaults = (
+  editorDefaults: Partial<EditorDefaults>,
+): Promise<UserSettings> =>
+  apiFetch("/api/settings/editor-defaults", {
+    method: "PATCH",
+    body: JSON.stringify({ editor_defaults: editorDefaults }),
+  });
+
+export const listMcpConnections = (): Promise<McpConnection[]> =>
+  apiFetch("/api/settings/connections");
+
+export const revokeMcpConnection = (clientId: string): Promise<void> =>
+  apiFetch(`/api/settings/connections/${clientId}`, { method: "DELETE" });
+
+// ------------------------------------------------------------------- oauth
+
+export type OAuthClientInfo = {
+  client_id: string;
+  client_name: string;
+  client_uri: string | null;
+  registered_at: string;
+};
+
+export const describeOAuthClient = (
+  clientId: string,
+): Promise<OAuthClientInfo> => apiFetch(`/api/oauth/clients/${clientId}`);
+
+export const approveOAuthRequest = (params: {
+  client_id: string;
+  redirect_uri: string;
+  state: string;
+  code_challenge: string;
+  code_challenge_method: string;
+  scope: string;
+  resource: string | null;
+}): Promise<{ redirect_to: string }> =>
+  apiFetch("/api/oauth/approve", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });

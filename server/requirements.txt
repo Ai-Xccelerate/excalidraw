@@ -7,3 +7,5 @@ pyjwt[crypto]==2.10.1
 httpx==0.28.1
 pydantic[email]==2.10.4
 bcrypt==4.2.1
+# the OAuth token endpoint takes form-encoded bodies, per RFC 6749
+python-multipart==0.0.20

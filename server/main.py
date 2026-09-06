@@ -8,7 +8,16 @@ from sqlalchemy import text
 
 from db import Base, engine
 import models  # noqa: F401  (ensures models are registered before create_all)
-from routers import ai_routes, auth_routes, collections, drawings, shared_scenes
+from routers import (
+    ai_routes,
+    auth_routes,
+    collections,
+    drawings,
+    mcp_routes,
+    oauth_routes,
+    settings_routes,
+    shared_scenes,
+)
 from sockets import sio
 
 Base.metadata.create_all(bind=engine)
@@ -60,6 +69,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # MCP clients read the auth challenge off a 401 to find the authorization
+    # server; without this the browser hides the header from them
+    expose_headers=["WWW-Authenticate", "MCP-Protocol-Version"],
 )
 
 app.include_router(auth_routes.router)
@@ -67,6 +79,9 @@ app.include_router(ai_routes.router)
 app.include_router(drawings.router)
 app.include_router(collections.router)
 app.include_router(shared_scenes.router)
+app.include_router(settings_routes.router)
+app.include_router(oauth_routes.router)
+app.include_router(mcp_routes.router)
 # Invites for addresses without an account yet are claimed at signup/login
 # (see auth.claim_pending_invites) rather than by an identity-provider webhook.
 

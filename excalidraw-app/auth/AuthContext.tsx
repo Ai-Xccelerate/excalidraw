@@ -38,6 +38,8 @@ type AuthState = {
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
   changePassword: (current: string, next: string) => Promise<void>;
+  /** re-reads the account after it changes elsewhere (e.g. Settings) */
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -117,6 +119,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     window.location.href = "/";
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    if (!getStoredToken()) {
+      return;
+    }
+    try {
+      setUser(await getMe());
+    } catch {
+      // a failed refresh is not worth signing the user out over; the next
+      // request that actually matters will surface the expiry
+    }
+  }, []);
+
   const resetPassword = useCallback(async (token: string, password: string) => {
     const session = await apiResetPassword(token, password);
     setStoredToken(session.token);
@@ -135,6 +149,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       forgotPassword: apiForgotPassword,
       resetPassword,
       changePassword,
+      refreshUser,
     }),
     [
       user,
@@ -145,6 +160,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       logout,
       resetPassword,
       changePassword,
+      refreshUser,
     ],
   );
 

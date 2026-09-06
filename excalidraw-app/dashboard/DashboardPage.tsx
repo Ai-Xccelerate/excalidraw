@@ -25,6 +25,39 @@ import "./DashboardPage.scss";
 
 const LOGO_LIGHT = "/aix-logo.png";
 
+const settingsIcon = (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.2.61.77 1.02 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
+const signOutIcon = (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
 const relativeTime = (iso: string): string => {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.round(diff / 60000);
@@ -381,8 +414,10 @@ const DashboardShell = () => {
         </div>
 
         <div className="aix-sidebar__bottom">
-          <div className="aix-sidebar__workspace">
+          <label className="aix-workspace-picker">
+            <span className="aix-workspace-picker__label">Workspace</span>
             <select
+              className="aix-workspace-picker__select"
               value={workspaceId ?? ""}
               onChange={(e) => selectWorkspace(e.target.value || null)}
             >
@@ -393,12 +428,41 @@ const DashboardShell = () => {
                 </option>
               ))}
             </select>
-          </div>
-          <div className="aix-sidebar__user">
-            <span>{user?.username || user?.email || "Account"}</span>
-            <button className="aix-signout-btn" onClick={logout}>
-              Sign out
-            </button>
+          </label>
+
+          <div className="aix-account">
+            <div className="aix-account__avatar" aria-hidden="true">
+              {(user?.username || user?.email || "?").charAt(0).toUpperCase()}
+            </div>
+            <div className="aix-account__identity">
+              <span className="aix-account__name">
+                {user?.username || user?.email?.split("@")[0] || "Account"}
+              </span>
+              <span className="aix-account__email" title={user?.email}>
+                {user?.email}
+              </span>
+            </div>
+            <div className="aix-account__actions">
+              <button
+                className="aix-icon-btn"
+                title="Settings"
+                aria-label="Settings"
+                onClick={() => {
+                  window.history.pushState({}, "", "/settings");
+                  window.dispatchEvent(new PopStateEvent("popstate"));
+                }}
+              >
+                {settingsIcon}
+              </button>
+              <button
+                className="aix-icon-btn"
+                title="Sign out"
+                aria-label="Sign out"
+                onClick={logout}
+              >
+                {signOutIcon}
+              </button>
+            </div>
           </div>
         </div>
       </aside>
