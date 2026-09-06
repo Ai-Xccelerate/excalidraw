@@ -10,11 +10,13 @@ RUN npm_config_target_arch=${TARGETARCH} yarn --frozen-lockfile --network-timeou
 
 ARG NODE_ENV=production
 
-# Railway injects matching service variables as build args automatically
+# Railway injects matching service variables as build args automatically.
+# These are read by Vite at build time and inlined into the bundle, so a value
+# missing here silently falls back to whatever .env.production ships.
 ARG VITE_APP_API_URL
-ARG VITE_APP_CLERK_PUBLISHABLE_KEY
+ARG VITE_APP_AI_BACKEND
 ENV VITE_APP_API_URL=${VITE_APP_API_URL}
-ENV VITE_APP_CLERK_PUBLISHABLE_KEY=${VITE_APP_CLERK_PUBLISHABLE_KEY}
+ENV VITE_APP_AI_BACKEND=${VITE_APP_AI_BACKEND}
 
 RUN npm_config_target_arch=${TARGETARCH} yarn build:app:docker
 

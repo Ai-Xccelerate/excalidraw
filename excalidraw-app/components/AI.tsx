@@ -11,6 +11,8 @@ import { safelyParseJSON } from "@excalidraw/common";
 
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
+import { getAuthToken } from "../data/backend";
+
 import { TTDIndexedDBAdapter } from "../data/TTDStorage";
 
 export const AIComponents = ({
@@ -40,6 +42,10 @@ export const AIComponents = ({
 
           const textFromFrameChildren = getTextFromElements(children);
 
+          // our backend bills per request, so unlike the public demo endpoint
+          // it only answers signed-in users
+          const token = await getAuthToken();
+
           const response = await fetch(
             `${
               import.meta.env.VITE_APP_AI_BACKEND
@@ -49,6 +55,7 @@ export const AIComponents = ({
               headers: {
                 Accept: "application/json",
                 "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
               },
               body: JSON.stringify({
                 texts: textFromFrameChildren,
@@ -105,10 +112,15 @@ export const AIComponents = ({
         onTextSubmit={async (props) => {
           const { onChunk, onStreamCreated, signal, messages } = props;
 
+          const authToken = await getAuthToken();
+
           const result = await TTDStreamFetch({
             url: `${
               import.meta.env.VITE_APP_AI_BACKEND
             }/v1/ai/text-to-diagram/chat-streaming`,
+            headers: authToken
+              ? { Authorization: `Bearer ${authToken}` }
+              : undefined,
             messages,
             onChunk,
             onStreamCreated,

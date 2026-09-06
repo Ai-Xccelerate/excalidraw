@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from db import Base, engine
 import models  # noqa: F401  (ensures models are registered before create_all)
-from routers import auth_routes, collections, drawings, shared_scenes
+from routers import ai_routes, auth_routes, collections, drawings, shared_scenes
 from sockets import sio
 
 Base.metadata.create_all(bind=engine)
@@ -63,6 +63,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_routes.router)
+app.include_router(ai_routes.router)
 app.include_router(drawings.router)
 app.include_router(collections.router)
 app.include_router(shared_scenes.router)

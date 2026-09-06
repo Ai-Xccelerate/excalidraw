@@ -52,6 +52,21 @@ class EmailVerificationToken(Base):
     created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
+class AIUsage(Base):
+    """Per-user, per-day generation counter. Lives in the database rather than
+    memory so a restart can't reset someone's quota — these calls cost real
+    money per request."""
+
+    __tablename__ = "ai_usage"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    day: Mapped[str] = mapped_column(String, primary_key=True)  # YYYY-MM-DD (UTC)
+    feature: Mapped[str] = mapped_column(String, primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class Workspace(Base):
     """A team workspace. Membership lives in `workspace_members`; personal
     (non-team) drawings simply have workspace_id = NULL."""
