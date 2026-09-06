@@ -43,9 +43,19 @@ Rules:
 
 
 class DiagramToCodeRequest(BaseModel):
-    texts: list = []
+    # getTextFromElements() joins the frame's text elements into a single
+    # "\n\n"-separated string, so the client sends a str here, not a list.
+    # Both are accepted so a future client change doesn't break this.
+    texts: str | list[str] | None = None
     image: str
     theme: str | None = None
+
+    def labels(self) -> list[str]:
+        if isinstance(self.texts, str):
+            raw = self.texts.split("\n")
+        else:
+            raw = self.texts or []
+        return [line.strip() for line in raw if isinstance(line, str) and line.strip()]
 
 
 class Message(BaseModel):
@@ -110,7 +120,7 @@ async def diagram_to_code(
     response.headers["X-Ratelimit-Limit"] = str(limit)
     response.headers["X-Ratelimit-Remaining"] = str(remaining)
 
-    labels = [t for t in (body.texts or []) if isinstance(t, str) and t.strip()]
+    labels = body.labels()
     user_content = [
         {
             "type": "text",
