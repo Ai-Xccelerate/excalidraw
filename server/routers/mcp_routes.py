@@ -22,7 +22,6 @@ from db import get_db
 from diagrams import MermaidError, build_flowchart, merged_defaults, parse_mermaid
 from models import Drawing, UserSettings
 from oauth import McpContext, get_mcp_context, public_app_url
-from services import ensure_personal_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -193,10 +192,11 @@ def _user_defaults(db: Session, user_id: str) -> dict:
 
 
 def _save(db: Session, ctx: McpContext, title: str, elements: list[dict]) -> Drawing:
-    workspace = ensure_personal_workspace(db, ctx.user_id)
     drawing = Drawing(
         owner_id=ctx.user_id,
-        workspace_id=workspace.id if workspace else None,
+        # personal, like the app's own New drawing — filing these into a
+        # workspace hid them from the dashboard's default view
+        workspace_id=None,
         title=title or "Untitled",
         elements=elements,
         app_state={},

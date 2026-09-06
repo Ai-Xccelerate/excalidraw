@@ -414,21 +414,26 @@ const DashboardShell = () => {
         </div>
 
         <div className="aix-sidebar__bottom">
-          <label className="aix-workspace-picker">
-            <span className="aix-workspace-picker__label">Workspace</span>
-            <select
-              className="aix-workspace-picker__select"
-              value={workspaceId ?? ""}
-              onChange={(e) => selectWorkspace(e.target.value || null)}
-            >
-              <option value="">Personal</option>
-              {workspaces.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {/* a solo account has one place for its drawings, so there is nothing
+              to choose between — the picker appears once a shared workspace
+              actually exists */}
+          {workspaces.length > 0 && (
+            <label className="aix-workspace-picker">
+              <span className="aix-workspace-picker__label">Workspace</span>
+              <select
+                className="aix-workspace-picker__select"
+                value={workspaceId ?? ""}
+                onChange={(e) => selectWorkspace(e.target.value || null)}
+              >
+                <option value="">Personal</option>
+                {workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <div className="aix-account">
             <div className="aix-account__avatar" aria-hidden="true">

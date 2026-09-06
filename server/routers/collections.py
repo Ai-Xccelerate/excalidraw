@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from auth import AuthContext, get_current_context, get_user_workspace_ids, normalize_email
 from db import get_db
 from models import Collection, User, Workspace, WorkspaceMember, WorkspacePendingInvite
-from services import ensure_personal_workspace
 
 router = APIRouter(prefix="/api", tags=["workspaces"])
 
@@ -68,11 +67,11 @@ async def _assert_workspace_access(db: Session, user_id: str, workspace_id: uuid
 async def list_workspaces(
     ctx: AuthContext = Depends(get_current_context), db: Session = Depends(get_db)
 ):
+    # No auto-created workspace: a solo account's drawings are personal, and
+    # inventing a "My Workspace" alongside "Personal" only offered two names
+    # for the same place. A workspace now exists when someone makes one to
+    # share with a team.
     ws_ids = get_user_workspace_ids(db, ctx.user_id)
-    if not ws_ids:
-        # every account gets one workspace on first look, so the picker is never empty
-        ensure_personal_workspace(db, ctx.user_id)
-        ws_ids = get_user_workspace_ids(db, ctx.user_id)
     roles = {
         m.workspace_id: m.role
         for m in db.query(WorkspaceMember).filter(WorkspaceMember.user_id == ctx.user_id).all()
