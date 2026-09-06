@@ -239,6 +239,37 @@ async def approve(
 
 # ---------------------------------------------------------------------- token
 
+class DenyRequest(BaseModel):
+    client_id: str
+    redirect_uri: str
+    state: str = ""
+
+
+@router.post("/api/oauth/deny")
+async def deny(
+    body: DenyRequest,
+    ctx: AuthContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+):
+    """Declining still has to answer the client, and the answer travels to the
+    redirect_uri — so the same registration check the approve path makes has to
+    happen here. Without it, a crafted consent link would turn Cancel into an
+    open redirect."""
+    client = db.get(OAuthClient, body.client_id)
+    if client is None or body.redirect_uri not in client.redirect_uris:
+        # nowhere safe to send the refusal; the app keeps the user instead
+        return {"redirect_to": None}
+
+    query = urlencode(
+        {
+            "error": "access_denied",
+            "error_description": "The user declined the request",
+            "state": body.state,
+        }
+    )
+    return {"redirect_to": f"{body.redirect_uri}?{query}"}
+
+
 @router.post("/oauth/token")
 async def token(
     grant_type: str = Form(...),

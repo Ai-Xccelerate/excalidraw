@@ -498,6 +498,16 @@ export const describeOAuthClient = (
   clientId: string,
 ): Promise<OAuthClientInfo> => apiFetch(`/api/oauth/clients/${clientId}`);
 
+export const denyOAuthRequest = (params: {
+  client_id: string;
+  redirect_uri: string;
+  state: string;
+}): Promise<{ redirect_to: string | null }> =>
+  apiFetch("/api/oauth/deny", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+
 export const approveOAuthRequest = (params: {
   client_id: string;
   redirect_uri: string;

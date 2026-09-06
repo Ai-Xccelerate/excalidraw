@@ -194,6 +194,16 @@ denied = client.post("/mcp", headers=read_only, json={"jsonrpc": "2.0", "id": 9,
 ok &= check("a read-only token cannot create drawings",
             denied["result"]["isError"] and "drawings:write" in denied["result"]["content"][0]["text"], denied)
 
+# 10b. declining is delivered through the API, never to a caller-supplied URL
+open_redirect = client.post("/api/oauth/deny", headers=AUTH, json={
+    "client_id": client_id, "redirect_uri": "https://evil.example/steal", "state": "xyz"}).json()
+ok &= check("deny refuses an unregistered redirect_uri", open_redirect["redirect_to"] is None, open_redirect)
+denied_ok = client.post("/api/oauth/deny", headers=AUTH, json={
+    "client_id": client_id, "redirect_uri": "https://claude.ai/api/mcp/auth_callback", "state": "xyz"}).json()
+ok &= check("deny returns access_denied to the registered redirect",
+            denied_ok["redirect_to"].startswith("https://claude.ai/api/mcp/auth_callback?error=access_denied"),
+            denied_ok)
+
 # 11. a refresh token can be spent once
 refreshed = client.post("/oauth/token", data={
     "grant_type": "refresh_token", "refresh_token": tok["refresh_token"]}).json()

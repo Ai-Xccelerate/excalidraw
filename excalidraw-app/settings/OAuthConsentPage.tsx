@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import {
   approveOAuthRequest,
+  denyOAuthRequest,
   describeOAuthClient,
   type OAuthClientInfo,
 } from "../data/backend";
@@ -39,18 +40,21 @@ const OAuthConsentPage = () => {
       .catch((e) => setError(e.message));
   }, [clientId]);
 
-  const deny = () => {
-    const redirectUri = params.get("redirect_uri");
-    if (!redirectUri) {
+  // the refusal is delivered to the client, so where it goes is decided by the
+  // API against the client's registered redirect URIs — a redirect_uri from
+  // this page's own query string is attacker-controlled
+  const deny = async () => {
+    setBusy(true);
+    try {
+      const { redirect_to } = await denyOAuthRequest({
+        client_id: clientId,
+        redirect_uri: params.get("redirect_uri") ?? "",
+        state: params.get("state") ?? "",
+      });
+      window.location.href = redirect_to ?? "/dashboard";
+    } catch {
       window.location.href = "/dashboard";
-      return;
     }
-    const query = new URLSearchParams({
-      error: "access_denied",
-      error_description: "The user declined the request",
-      state: params.get("state") ?? "",
-    });
-    window.location.href = `${redirectUri}?${query}`;
   };
 
   const approve = async () => {
