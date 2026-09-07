@@ -246,6 +246,7 @@ import {
   bindOrUnbindBindingElement,
   canHaveConnectors,
   CONNECTOR_DRAG_THRESHOLD,
+  stickyNoteColor,
   getConnectorAtPoint,
   mutateElement,
   getElementBounds,
@@ -9679,7 +9680,7 @@ class App extends React.Component<AppProps, AppState> {
   }
 
   private createGenericElementOnPointerDown = (
-    elementType: ExcalidrawGenericElement["type"] | "embeddable",
+    elementType: ExcalidrawGenericElement["type"] | "embeddable" | "stickynote",
     pointerDownState: PointerDownState,
   ): void => {
     const [gridX, gridY] = getGridPoint(
@@ -9695,17 +9696,30 @@ class App extends React.Component<AppProps, AppState> {
       y: gridY,
     });
 
+    // a sticky note is a rectangle wearing paper: filled, no border, soft
+    // corners. Keeping it a rectangle means text binding, arrows and export
+    // all work on it without knowing it is special
+    const isStickyNote = elementType === "stickynote";
+
     const baseElementAttributes = {
       x: gridX,
       y: gridY,
-      strokeColor: this.state.currentItemStrokeColor,
-      backgroundColor: this.state.currentItemBackgroundColor,
-      fillStyle: this.state.currentItemFillStyle,
-      strokeWidth: this.getCurrentItemStrokeWidth(elementType),
+      strokeColor: isStickyNote
+        ? COLOR_PALETTE.transparent
+        : this.state.currentItemStrokeColor,
+      backgroundColor: isStickyNote
+        ? stickyNoteColor(this.state.currentItemBackgroundColor)
+        : this.state.currentItemBackgroundColor,
+      fillStyle: isStickyNote ? "solid" : this.state.currentItemFillStyle,
+      strokeWidth: this.getCurrentItemStrokeWidth(
+        isStickyNote ? "rectangle" : elementType,
+      ),
       strokeStyle: this.state.currentItemStrokeStyle,
       roughness: this.state.currentItemRoughness,
       opacity: this.state.currentItemOpacity,
-      roundness: this.getCurrentItemRoundness(elementType),
+      roundness: isStickyNote
+        ? { type: ROUNDNESS.ADAPTIVE_RADIUS }
+        : this.getCurrentItemRoundness(elementType),
       locked: false,
       frameId: topLayerFrame ? topLayerFrame.id : null,
     } as const;
@@ -9718,8 +9732,11 @@ class App extends React.Component<AppProps, AppState> {
       });
     } else {
       element = newElement({
-        type: elementType,
+        type: isStickyNote ? "rectangle" : elementType,
         ...baseElementAttributes,
+        // marks it as paper so the picker offers note colours rather than the
+        // usual element backgrounds
+        ...(isStickyNote ? { customData: { stickyNote: true } } : {}),
       });
     }
 

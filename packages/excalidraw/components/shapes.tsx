@@ -14,6 +14,7 @@ import {
   laserPointerToolIcon,
   handIcon,
   frameToolIcon,
+  stickyNoteToolIcon,
 } from "./icons";
 
 import type { AppClassProperties } from "../types";
@@ -40,6 +41,14 @@ export const SHAPES = [
     value: "rectangle",
     key: KEYS.R,
     numericKey: KEYS["2"],
+    fillable: true,
+    toolbar: true,
+  },
+  {
+    icon: stickyNoteToolIcon,
+    value: "stickynote",
+    key: KEYS.N,
+    numericKey: null,
     fillable: true,
     toolbar: true,
   },

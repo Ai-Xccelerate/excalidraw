@@ -2,6 +2,9 @@ import type { ElementOrToolType } from "@excalidraw/excalidraw/types";
 
 export const hasBackground = (type: ElementOrToolType) =>
   type === "rectangle" ||
+  // the sticky tool's "background" is the paper colour, so the picker has to
+  // show while it is selected and before anything is drawn
+  type === "stickynote" ||
   type === "iframe" ||
   type === "embeddable" ||
   type === "ellipse" ||

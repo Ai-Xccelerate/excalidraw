@@ -184,6 +184,18 @@ const COMMON_ELEMENT_SHADES = pick(COLOR_PALETTE, [
 // quick picks defaults
 // -----------------------------------------------------------------------------
 
+/** Paper colours for sticky notes. Muted enough that black text stays
+ * readable on them, unlike the saturated element backgrounds. */
+export const STICKY_NOTE_PICKS = [
+  "#fef3bd",
+  "#ffd8a8",
+  "#ffc9c9",
+  "#b2f2bb",
+  "#a5d8ff",
+] as ColorTuple;
+
+export const DEFAULT_STICKY_NOTE_COLOR = STICKY_NOTE_PICKS[0];
+
 // ORDER matters for positioning in quick picker
 export const DEFAULT_ELEMENT_STROKE_PICKS = [
   COLOR_PALETTE.black,

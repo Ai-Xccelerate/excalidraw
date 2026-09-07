@@ -95,6 +95,7 @@ export * from "./textMeasurements";
 export * from "./textWrapping";
 export * from "./transform";
 export * from "./connectors";
+export * from "./stickyNote";
 export * from "./transformHandles";
 export * from "./typeChecks";
 export * from "./utils";

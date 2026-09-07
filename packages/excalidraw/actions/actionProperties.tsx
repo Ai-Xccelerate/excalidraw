@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE,
   DEFAULT_ELEMENT_BACKGROUND_PICKS,
+  STICKY_NOTE_PICKS,
   DEFAULT_ELEMENT_STROKE_COLOR_PALETTE,
   DEFAULT_ELEMENT_STROKE_PICKS,
   ARROW_TYPE,
@@ -33,6 +34,7 @@ import {
   bindBindingElement,
   calculateFixedPointForElbowArrowBinding,
   updateBoundElements,
+  isStickyNoteElement,
 } from "@excalidraw/element";
 
 import { LinearElementEditor } from "@excalidraw/element";
@@ -449,7 +451,18 @@ export const actionChangeBackgroundColor = register<
           <h3 aria-hidden="true">{t("labels.background")}</h3>
         )}
         <ColorPicker
-          topPicks={DEFAULT_ELEMENT_BACKGROUND_PICKS}
+          topPicks={
+            // a note's background is its paper, so offer paper colours —
+            // both while the tool is armed and when notes are selected
+            appState.activeTool.type === "stickynote" ||
+            (elements.some((element) => isStickyNoteElement(element)) &&
+              app.scene
+                .getSelectedElements(appState)
+                .every((element) => isStickyNoteElement(element)) &&
+              app.scene.getSelectedElements(appState).length > 0)
+              ? STICKY_NOTE_PICKS
+              : DEFAULT_ELEMENT_BACKGROUND_PICKS
+          }
           palette={DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE}
           type="elementBackground"
           label={t("labels.background")}

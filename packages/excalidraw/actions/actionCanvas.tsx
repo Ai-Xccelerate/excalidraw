@@ -35,6 +35,7 @@ import {
   SunIcon,
   TrashIcon,
   zoomAreaIcon,
+  zoomToFitIcon,
   ZoomInIcon,
   ZoomOutIcon,
   ZoomResetIcon,
@@ -445,7 +446,7 @@ export const actionZoomToFitSelection = register({
 export const actionZoomToFit = register({
   name: "zoomToFit",
   label: "helpDialog.zoomToFit",
-  icon: zoomAreaIcon,
+  icon: zoomToFitIcon,
   viewMode: true,
   trackEvent: { category: "canvas" },
   perform: (elements, appState, _, app) =>
@@ -458,6 +459,24 @@ export const actionZoomToFit = register({
       fitToViewport: false,
       canvasOffsets: app.getEditorUIOffsets(),
     }),
+  // sits next to the zoom controls: when everything is off-screen, hunting for
+  // it by panning is the worst way to find it
+  PanelComponent: ({ updateData, elements }) => (
+    <Tooltip label={t("helpDialog.zoomToFit")} style={{ height: "100%" }}>
+      <ToolButton
+        type="button"
+        className="zoom-to-fit-button zoom-button"
+        title={`${t("helpDialog.zoomToFit")} — ${getShortcutKey("Shift+1")}`}
+        aria-label={t("helpDialog.zoomToFit")}
+        icon={zoomToFitIcon}
+        // nothing drawn, nothing to fit
+        disabled={!elements.some((element) => !element.isDeleted)}
+        onClick={() => {
+          updateData(null);
+        }}
+      />
+    </Tooltip>
+  ),
   keyTest: (event) =>
     event.code === CODES.ONE &&
     event.shiftKey &&
