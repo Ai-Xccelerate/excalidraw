@@ -283,6 +283,7 @@ export const zoomToFitBounds = ({
   viewportZoomFactor = 1,
   minZoom = -Infinity,
   maxZoom = Infinity,
+  snapZoomToStep = true,
 }: {
   bounds: SceneBounds;
   canvasOffsets?: Offsets;
@@ -293,6 +294,12 @@ export const zoomToFitBounds = ({
   viewportZoomFactor?: number;
   minZoom?: number;
   maxZoom?: number;
+  /**
+   * Rounds the zoom down to the nearest 10%. Tidy for a keyboard step, but it
+   * throws away up to a third of the viewport when fitting: content needing
+   * 26% is drawn at 20%.
+   */
+  snapZoomToStep?: boolean;
 }) => {
   viewportZoomFactor = clamp(viewportZoomFactor, MIN_ZOOM, MAX_ZOOM);
 
@@ -333,7 +340,13 @@ export const zoomToFitBounds = ({
   }
 
   const newZoomValue = getNormalizedZoom(
-    clamp(roundToStep(adjustedZoomValue, ZOOM_STEP, "floor"), minZoom, maxZoom),
+    clamp(
+      snapZoomToStep
+        ? roundToStep(adjustedZoomValue, ZOOM_STEP, "floor")
+        : adjustedZoomValue,
+      minZoom,
+      maxZoom,
+    ),
   );
 
   const centerScroll = centerScrollOn({
@@ -365,6 +378,7 @@ export const zoomToFit = ({
   viewportZoomFactor,
   minZoom,
   maxZoom,
+  snapZoomToStep,
 }: {
   canvasOffsets?: Offsets;
   targetElements: readonly ExcalidrawElement[];
@@ -375,6 +389,7 @@ export const zoomToFit = ({
   viewportZoomFactor?: number;
   minZoom?: number;
   maxZoom?: number;
+  snapZoomToStep?: boolean;
 }) => {
   const commonBounds = getCommonBounds(getNonDeletedElements(targetElements));
 
@@ -386,6 +401,7 @@ export const zoomToFit = ({
     viewportZoomFactor,
     minZoom,
     maxZoom,
+    snapZoomToStep,
   });
 };
 
@@ -456,7 +472,16 @@ export const actionZoomToFit = register({
         ...appState,
         userToFollow: null,
       },
-      fitToViewport: false,
+      // fill the viewport rather than stopping at 100%: a small drawing left
+      // at 1:1 in the middle of a large screen is not "fit to screen"
+      fitToViewport: true,
+      // a little air around the content instead of edge to edge
+      viewportZoomFactor: 0.95,
+      // ...and don't round the zoom down to the nearest 10%, which would
+      // leave a wide margin on one axis
+      snapZoomToStep: false,
+      // a lone small element shouldn't fill the wall
+      maxZoom: 2,
       canvasOffsets: app.getEditorUIOffsets(),
     }),
   // sits next to the zoom controls: when everything is off-screen, hunting for

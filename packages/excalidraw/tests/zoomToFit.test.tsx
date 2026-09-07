@@ -9,6 +9,16 @@ unmountComponent();
 
 const { h } = window;
 
+const onScreen = ([x1, y1, x2, y2]: [number, number, number, number]) => {
+  const { scrollX, scrollY, zoom } = h.state;
+  return {
+    left: (x1 + scrollX) * zoom.value,
+    top: (y1 + scrollY) * zoom.value,
+    right: (x2 + scrollX) * zoom.value,
+    bottom: (y2 + scrollY) * zoom.value,
+  };
+};
+
 describe("zoom to fit button", () => {
   beforeEach(async () => {
     localStorage.clear();
@@ -47,18 +57,77 @@ describe("zoom to fit button", () => {
         height: 200,
       }),
     ]);
-    API.setAppState({ scrollX: 0, scrollY: 0, zoom: { value: 4 as any } });
+    API.setAppState({
+      width: 1200,
+      height: 800,
+      scrollX: 0,
+      scrollY: 0,
+      zoom: { value: 4 as any },
+    });
 
     fireEvent.click(button()!);
 
-    // the scene has no measured size under jsdom, so "on screen" is checked
-    // the way the action defines it: the content's centre on the viewport's
-    const { scrollX, scrollY, zoom, width, height } = h.state;
-    const centreX = (9000 + 200 / 2 + scrollX) * zoom.value;
-    const centreY = (9000 + 200 / 2 + scrollY) * zoom.value;
-    expect(centreX).toBeCloseTo(width / 2, 0);
-    expect(centreY).toBeCloseTo(height / 2, 0);
-    // and zoomed out far enough to actually hold it
-    expect(zoom.value).toBeLessThan(4);
+    const screen = onScreen([9000, 9000, 9200, 9200]);
+    expect(screen.left).toBeGreaterThanOrEqual(0);
+    expect(screen.top).toBeGreaterThanOrEqual(0);
+    expect(screen.right).toBeLessThanOrEqual(h.state.width);
+    expect(screen.bottom).toBeLessThanOrEqual(h.state.height);
+  });
+
+  it("centres the drawing on both axes", () => {
+    API.setElements([
+      API.createElement({
+        type: "rectangle",
+        x: -400,
+        y: 2000,
+        width: 900,
+        height: 300,
+      }),
+    ]);
+    API.setAppState({ width: 1200, height: 800, scrollX: 0, scrollY: 0 });
+
+    fireEvent.click(button()!);
+
+    const screen = onScreen([-400, 2000, 500, 2300]);
+    // equal air on the left and right, and on the top and bottom
+    expect(screen.left).toBeCloseTo(h.state.width - screen.right, 0);
+    expect(screen.top).toBeCloseTo(h.state.height - screen.bottom, 0);
+  });
+
+  it("fills the screen with a small drawing instead of leaving it at 100%", () => {
+    API.setElements([
+      API.createElement({
+        type: "rectangle",
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+      }),
+    ]);
+    API.setAppState({ width: 1200, height: 800, scrollX: 0, scrollY: 0 });
+
+    fireEvent.click(button()!);
+
+    // it grew rather than sitting at 1:1 in the middle of a large screen
+    expect(h.state.zoom.value).toBeGreaterThan(1);
+  });
+
+  it("uses the width it has, rather than rounding the zoom down to a step", () => {
+    API.setElements([
+      API.createElement({
+        type: "rectangle",
+        x: 0,
+        y: 0,
+        width: 4000,
+        height: 3000,
+      }),
+    ]);
+    API.setAppState({ width: 1200, height: 800, scrollX: 0, scrollY: 0 });
+
+    fireEvent.click(button()!);
+
+    const screen = onScreen([0, 0, 4000, 3000]);
+    // snapping 0.26 down to 0.2 used to waste a third of the viewport
+    expect(screen.bottom - screen.top).toBeGreaterThan(h.state.height * 0.85);
   });
 });
