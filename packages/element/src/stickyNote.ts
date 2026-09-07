@@ -5,6 +5,10 @@ import {
 
 import type { ExcalidrawElement } from "./types";
 
+/** What a click (rather than a drag) drops on the canvas. Square, roughly the
+ * proportions of the paper kind, and big enough to write a line or two in. */
+export const STICKY_NOTE_DEFAULT_SIZE = 180;
+
 /** A sticky note is a rectangle with `customData.stickyNote`, so it keeps
  * every rectangle behaviour (text binding, arrows, export) while the UI can
  * still tell it apart and offer paper colours instead of element backgrounds. */

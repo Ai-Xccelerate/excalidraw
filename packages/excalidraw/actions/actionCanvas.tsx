@@ -35,7 +35,6 @@ import {
   SunIcon,
   TrashIcon,
   zoomAreaIcon,
-  zoomToFitIcon,
   ZoomInIcon,
   ZoomOutIcon,
   ZoomResetIcon,
@@ -283,7 +282,6 @@ export const zoomToFitBounds = ({
   viewportZoomFactor = 1,
   minZoom = -Infinity,
   maxZoom = Infinity,
-  snapZoomToStep = true,
 }: {
   bounds: SceneBounds;
   canvasOffsets?: Offsets;
@@ -294,12 +292,6 @@ export const zoomToFitBounds = ({
   viewportZoomFactor?: number;
   minZoom?: number;
   maxZoom?: number;
-  /**
-   * Rounds the zoom down to the nearest 10%. Tidy for a keyboard step, but it
-   * throws away up to a third of the viewport when fitting: content needing
-   * 26% is drawn at 20%.
-   */
-  snapZoomToStep?: boolean;
 }) => {
   viewportZoomFactor = clamp(viewportZoomFactor, MIN_ZOOM, MAX_ZOOM);
 
@@ -340,13 +332,7 @@ export const zoomToFitBounds = ({
   }
 
   const newZoomValue = getNormalizedZoom(
-    clamp(
-      snapZoomToStep
-        ? roundToStep(adjustedZoomValue, ZOOM_STEP, "floor")
-        : adjustedZoomValue,
-      minZoom,
-      maxZoom,
-    ),
+    clamp(roundToStep(adjustedZoomValue, ZOOM_STEP, "floor"), minZoom, maxZoom),
   );
 
   const centerScroll = centerScrollOn({
@@ -378,7 +364,6 @@ export const zoomToFit = ({
   viewportZoomFactor,
   minZoom,
   maxZoom,
-  snapZoomToStep,
 }: {
   canvasOffsets?: Offsets;
   targetElements: readonly ExcalidrawElement[];
@@ -389,7 +374,6 @@ export const zoomToFit = ({
   viewportZoomFactor?: number;
   minZoom?: number;
   maxZoom?: number;
-  snapZoomToStep?: boolean;
 }) => {
   const commonBounds = getCommonBounds(getNonDeletedElements(targetElements));
 
@@ -401,7 +385,6 @@ export const zoomToFit = ({
     viewportZoomFactor,
     minZoom,
     maxZoom,
-    snapZoomToStep,
   });
 };
 
@@ -462,7 +445,7 @@ export const actionZoomToFitSelection = register({
 export const actionZoomToFit = register({
   name: "zoomToFit",
   label: "helpDialog.zoomToFit",
-  icon: zoomToFitIcon,
+  icon: zoomAreaIcon,
   viewMode: true,
   trackEvent: { category: "canvas" },
   perform: (elements, appState, _, app) =>
@@ -472,36 +455,9 @@ export const actionZoomToFit = register({
         ...appState,
         userToFollow: null,
       },
-      // fill the viewport rather than stopping at 100%: a small drawing left
-      // at 1:1 in the middle of a large screen is not "fit to screen"
-      fitToViewport: true,
-      // a little air around the content instead of edge to edge
-      viewportZoomFactor: 0.95,
-      // ...and don't round the zoom down to the nearest 10%, which would
-      // leave a wide margin on one axis
-      snapZoomToStep: false,
-      // a lone small element shouldn't fill the wall
-      maxZoom: 2,
+      fitToViewport: false,
       canvasOffsets: app.getEditorUIOffsets(),
     }),
-  // sits next to the zoom controls: when everything is off-screen, hunting for
-  // it by panning is the worst way to find it
-  PanelComponent: ({ updateData, elements }) => (
-    <Tooltip label={t("helpDialog.zoomToFit")} style={{ height: "100%" }}>
-      <ToolButton
-        type="button"
-        className="zoom-to-fit-button zoom-button"
-        title={`${t("helpDialog.zoomToFit")} — ${getShortcutKey("Shift+1")}`}
-        aria-label={t("helpDialog.zoomToFit")}
-        icon={zoomToFitIcon}
-        // nothing drawn, nothing to fit
-        disabled={!elements.some((element) => !element.isDeleted)}
-        onClick={() => {
-          updateData(null);
-        }}
-      />
-    </Tooltip>
-  ),
   keyTest: (event) =>
     event.code === CODES.ONE &&
     event.shiftKey &&

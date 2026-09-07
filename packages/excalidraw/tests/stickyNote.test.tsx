@@ -4,7 +4,10 @@ import {
   COLOR_PALETTE,
   ROUNDNESS,
 } from "@excalidraw/common";
-import { isStickyNoteElement } from "@excalidraw/element";
+import {
+  isStickyNoteElement,
+  STICKY_NOTE_DEFAULT_SIZE,
+} from "@excalidraw/element";
 
 import { Excalidraw } from "../index";
 
@@ -60,6 +63,28 @@ describe("sticky note tool", () => {
     const text = h.elements.find((element) => element.type === "text");
     expect(text).toBeDefined();
     expect((text as any).containerId).toBe(note.id);
+  });
+
+  it("stamps a default-size note on a click, ready to resize", () => {
+    UI.clickTool("stickynote" as any);
+    mouse.clickAt(300, 300);
+
+    const note = h.elements[h.elements.length - 1];
+    expect(isStickyNoteElement(note)).toBe(true);
+    expect(note.width).toBe(STICKY_NOTE_DEFAULT_SIZE);
+    expect(note.height).toBe(STICKY_NOTE_DEFAULT_SIZE);
+    // centred on where it was placed
+    expect(note.x + note.width / 2).toBeCloseTo(300, 0);
+    expect(note.y + note.height / 2).toBeCloseTo(300, 0);
+    // and it is the selected element, so the resize handles are right there
+    expect(API.getSelectedElement().id).toBe(note.id);
+  });
+
+  it("still throws away a stray click with an ordinary shape tool", () => {
+    UI.clickTool("rectangle");
+    mouse.clickAt(600, 600);
+
+    expect(h.elements.filter((element) => !element.isDeleted)).toEqual([]);
   });
 
   it("does not leak its styling into the next rectangle", () => {

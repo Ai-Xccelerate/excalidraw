@@ -246,7 +246,9 @@ import {
   bindOrUnbindBindingElement,
   canHaveConnectors,
   CONNECTOR_DRAG_THRESHOLD,
+  isStickyNoteElement,
   stickyNoteColor,
+  STICKY_NOTE_DEFAULT_SIZE,
   getConnectorAtPoint,
   mutateElement,
   getElementBounds,
@@ -11160,6 +11162,22 @@ class App extends React.Component<AppProps, AppState> {
 
         this.handleTextWysiwyg(newElement, {
           isExistingElement: true,
+        });
+      }
+
+      // a click rather than a drag: a sticky note is stamped at its default
+      // size instead of being thrown away, and can be resized from there
+      if (
+        newElement &&
+        isStickyNoteElement(newElement) &&
+        isInvisiblySmallElement(newElement)
+      ) {
+        this.scene.mutateElement(newElement, {
+          // centred on the click, the way you would place a note by hand
+          x: newElement.x - STICKY_NOTE_DEFAULT_SIZE / 2,
+          y: newElement.y - STICKY_NOTE_DEFAULT_SIZE / 2,
+          width: STICKY_NOTE_DEFAULT_SIZE,
+          height: STICKY_NOTE_DEFAULT_SIZE,
         });
       }
 
