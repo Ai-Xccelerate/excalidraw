@@ -60,8 +60,16 @@ export const getSyncableElements = (
     isSyncableElement(element),
   ) as SyncableExcalidrawElement[];
 
-const BACKEND_V2_GET = import.meta.env.VITE_APP_BACKEND_V2_GET_URL;
-const BACKEND_V2_POST = import.meta.env.VITE_APP_BACKEND_V2_POST_URL;
+// Share links live on our own API, which is also where every other request
+// goes. Deriving them from VITE_APP_API_URL keeps one hostname to configure —
+// the separate BACKEND_V2 variables had been left pointing at a service name
+// that no longer exists, so "Export to Link" posted into a 404.
+const API_ROOT = (import.meta.env.VITE_APP_API_URL || "").replace(/\/$/, "");
+
+const BACKEND_V2_GET =
+  import.meta.env.VITE_APP_BACKEND_V2_GET_URL || `${API_ROOT}/api/v2/`;
+const BACKEND_V2_POST =
+  import.meta.env.VITE_APP_BACKEND_V2_POST_URL || `${API_ROOT}/api/v2/post/`;
 
 export type EncryptedData = {
   data: ArrayBuffer;
