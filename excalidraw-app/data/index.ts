@@ -132,6 +132,16 @@ export type SocketUpdateData =
 // enforced server-side via room membership, not via a key in the URL
 const RE_COLLAB_LINK = /^#room=([a-zA-Z0-9-]+)$/;
 
+// a shareable link is the whole scene, encrypted, in the hash: `#json=<id>,<key>`
+const RE_SHARE_LINK = /^#json=([a-zA-Z0-9_-]+),([a-zA-Z0-9_-]+)$/;
+
+export const parseShareLinkHash = (hash: string) => hash.match(RE_SHARE_LINK);
+
+/** A shareable link opens as a read-only copy for anyone who has it: it must
+ * not need an account, and it must not touch the visitor's own scene. */
+export const isShareLinkView = () =>
+  RE_SHARE_LINK.test(window.location.hash);
+
 export const isCollaborationLink = (link: string) => {
   const hash = new URL(link).hash;
   return RE_COLLAB_LINK.test(hash);
@@ -263,7 +273,10 @@ export const exportToBackend = async (
     });
     const json = await response.json();
     if (json.id) {
-      const url = new URL(window.location.href);
+      // the link always points at the app root — a share link built while a
+      // saved drawing was open (/d/:id) would otherwise send the recipient to
+      // a drawing they have no access to, and land them on a sign-in screen
+      const url = new URL(window.location.origin);
       // We need to store the key (and less importantly the id) as hash instead
       // of queryParam in order to never send it to the server
       url.hash = `json=${json.id},${encryptionKey}`;

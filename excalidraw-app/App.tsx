@@ -115,6 +115,8 @@ import {
   getSyncableElements,
   importFromBackend,
   isCollaborationLink,
+  isShareLinkView,
+  parseShareLinkHash,
 } from "./data";
 
 import { updateStaleImageStatuses } from "./data/FileManager";
@@ -302,9 +304,7 @@ const initializeScene = async (opts: {
 > => {
   const searchParams = new URLSearchParams(window.location.search);
   const id = searchParams.get("id");
-  const jsonBackendMatch = window.location.hash.match(
-    /^#json=([a-zA-Z0-9_-]+),([a-zA-Z0-9_-]+)$/,
-  );
+  const jsonBackendMatch = parseShareLinkHash(window.location.hash);
   const externalUrlMatch = window.location.hash.match(/^#url=(.*)$/);
 
   const localDataState = importFromLocalStorage();
@@ -376,6 +376,8 @@ const initializeScene = async (opts: {
       !scene.elements.length ||
       // don't prompt for collab scenes because we don't override local storage
       roomLinkData ||
+      // nor for share links, which open read-only and are never saved locally
+      jsonBackendMatch ||
       // otherwise, prompt whether user wants to override current scene
       (await openConfirmModal(shareableLinkConfirmDialog))
     ) {
@@ -402,7 +404,9 @@ const initializeScene = async (opts: {
         };
       }
       scene.scrollToContent = true;
-      if (!roomLinkData) {
+      // a share link keeps its hash so the shared scene survives a reload —
+      // it's the only copy the visitor has, nothing was written locally
+      if (!roomLinkData && !jsonBackendMatch) {
         window.history.replaceState({}, APP_NAME, window.location.origin);
       }
     } else {
@@ -534,6 +538,7 @@ const ExcalidrawWrapper = () => {
     return isCollaborationLink(window.location.href);
   });
   const collabError = useAtomValue(collabErrorIndicatorAtom);
+  const [isSharedLink, setIsSharedLink] = useState(isShareLinkView);
 
   useHandleLibrary({
     excalidrawAPI,
@@ -684,6 +689,7 @@ const ExcalidrawWrapper = () => {
 
     const onHashChange = async (event: HashChangeEvent) => {
       event.preventDefault();
+      setIsSharedLink(isShareLinkView());
       const libraryUrlTokens = parseLibraryTokensFromUrl();
       if (!libraryUrlTokens) {
         if (
@@ -730,7 +736,7 @@ const ExcalidrawWrapper = () => {
           // drawing with a copy of another one. The backend is the source of
           // truth whenever a drawing is open; only the local (signed-out /
           // scratch) scene may be restored from browser storage.
-          if (!appJotaiStore.get(currentDrawingIdAtom)) {
+          if (!appJotaiStore.get(currentDrawingIdAtom) && !isShareLinkView()) {
             excalidrawAPI.updateScene({
               ...localDataState,
               captureUpdate: CaptureUpdateAction.NEVER,
@@ -846,7 +852,7 @@ const ExcalidrawWrapper = () => {
       collabAPI.syncElements(elements);
     } else {
       const drawingId = appJotaiStore.get(currentDrawingIdAtom);
-      if (drawingId) {
+      if (drawingId && !isSharedLink) {
         queueGenerateThumbnail(drawingId, elements, appState, files);
         queueSaveDrawing(drawingId, elements, appState, files);
       }
@@ -854,7 +860,9 @@ const ExcalidrawWrapper = () => {
 
     // this check is redundant, but since this is a hot path, it's best
     // not to evaludate the nested expression every time
-    if (!LocalData.isSavePaused()) {
+    // a shared link is someone else's scene — persisting it would replace
+    // whatever the visitor had drawn locally
+    if (!isSharedLink && !LocalData.isSavePaused()) {
       LocalData.save(elements, appState, files, () => {
         if (excalidrawAPI) {
           let didChange = false;
@@ -1069,6 +1077,7 @@ const ExcalidrawWrapper = () => {
         onExport={onExport}
         initialData={initialStatePromiseRef.current.promise}
         isCollaborating={isCollaborating}
+        viewModeEnabled={isSharedLink || undefined}
         onPointerUpdate={collabAPI?.onPointerUpdate}
         UIOptions={{
           canvasActions: {
