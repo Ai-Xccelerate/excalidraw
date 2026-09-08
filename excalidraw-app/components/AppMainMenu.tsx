@@ -2,8 +2,10 @@ import {
   loginIcon,
   eyeIcon,
   PlusIcon,
+  share,
   TrashIcon,
 } from "@excalidraw/excalidraw/components/icons";
+import { t } from "@excalidraw/excalidraw/i18n";
 import { MainMenu } from "@excalidraw/excalidraw/index";
 import React from "react";
 
@@ -51,6 +53,7 @@ const handleDeleteDrawing = async (drawingId: string) => {
 };
 
 export const AppMainMenu: React.FC<{
+  onShareDialogOpen: () => any;
   onCollabDialogOpen: () => any;
   isCollaborating: boolean;
   isCollabEnabled: boolean;
@@ -64,6 +67,11 @@ export const AppMainMenu: React.FC<{
       <MainMenu.DefaultItems.SaveToActiveFile />
       <MainMenu.DefaultItems.Export />
       <MainMenu.DefaultItems.SaveAsImage />
+      {/* the share dialog is otherwise only reachable from the top-right
+          trigger, which mobile doesn't render */}
+      <MainMenu.Item icon={share} onSelect={() => props.onShareDialogOpen()}>
+        {t("labels.share")}
+      </MainMenu.Item>
       {props.isCollabEnabled && (
         <MainMenu.DefaultItems.LiveCollaborationTrigger
           isCollaborating={props.isCollaborating}

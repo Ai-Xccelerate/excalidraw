@@ -987,6 +987,11 @@ const ExcalidrawWrapper = () => {
     [setShareDialogState],
   );
 
+  const onShareDialogOpen = useCallback(
+    () => setShareDialogState({ isOpen: true, type: "share" }),
+    [setShareDialogState],
+  );
+
   // ---------------------------------------------------------------------------
   // onExport — intercepts file save to wait for pending image loads
   // ---------------------------------------------------------------------------
@@ -1158,6 +1163,7 @@ const ExcalidrawWrapper = () => {
         }}
       >
         <AppMainMenu
+          onShareDialogOpen={onShareDialogOpen}
           onCollabDialogOpen={onCollabDialogOpen}
           isCollaborating={isCollaborating}
           isCollabEnabled={!isCollabDisabled}
