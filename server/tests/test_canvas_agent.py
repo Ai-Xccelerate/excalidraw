@@ -180,5 +180,105 @@ styled = agent.compile_action(
 label = next(e for e in styled["elements"] if e["type"] == "text")
 ok &= check("agent diagrams use the user's saved font", label["fontFamily"] == 3, label["fontFamily"])
 
+# ------------------------------------------------------- through the route
+
+# The parsing above all passes with the route itself broken: the first version
+# shipped with the handler shadowing the module it called, and only a real
+# request through the app would have caught it. So drive one.
+import uuid
+from datetime import datetime, timezone
+
+from fastapi.testclient import TestClient
+
+import ai
+import main
+from auth import create_access_token, hash_password
+from db import SessionLocal
+from models import User
+
+db = SessionLocal()
+user = User(
+    email=f"agent-{uuid.uuid4().hex[:6]}@example.com",
+    password_hash=hash_password("supersecret1"),
+)
+user.email_verified_at = datetime.now(timezone.utc)
+db.add(user)
+db.commit()
+db.refresh(user)
+AUTH = {"Authorization": f"Bearer {create_access_token(user)}"}
+client = TestClient(main.app)
+
+REPLY = (
+    "Two lanes, decision in the middle.\n\n"
+    '```json\n{"action": "draw", "nodes": [{"id": "a", "label": "Start", '
+    '"shape": "ellipse"}, {"id": "b", "label": "Done"}], '
+    '"edges": [{"from": "a", "to": "b"}]}\n```'
+)
+
+_real_complete, _real_configured = ai.complete, ai.is_configured
+captured: dict = {}
+
+
+async def fake_complete(messages, **kwargs):
+    captured["messages"] = messages
+    return REPLY
+
+
+ai.complete = fake_complete
+ai.is_configured = lambda: True
+
+try:
+    response = client.post(
+        "/v1/ai/canvas-agent",
+        headers=AUTH,
+        json={
+            "messages": [{"role": "user", "content": "draw a two step flow"}],
+            "board": {"elements": [], "selected_ids": []},
+            "attachments": [],
+        },
+    )
+    ok &= check("the route answers", response.status_code == 200, response.text)
+    payload = response.json() if response.status_code == 200 else {}
+    ok &= check(
+        "the prose comes back without the action block",
+        "```" not in payload.get("reply", "```"),
+        payload.get("reply"),
+    )
+    ok &= check(
+        "and the drawing comes back as elements",
+        payload.get("operations", {}).get("summary", {}).get("created") == 2,
+        payload.get("operations"),
+    )
+    ok &= check(
+        "the model was given the standing instructions and the board",
+        captured["messages"][0]["role"] == "system" and len(captured["messages"]) >= 3,
+        captured.get("messages"),
+    )
+
+    unauthorised = client.post("/v1/ai/canvas-agent", json={"messages": []})
+    ok &= check("and it needs a session", unauthorised.status_code == 401, unauthorised.status_code)
+
+    # a crash must come back as a response, or the browser just says
+    # "Failed to fetch" and the real error never reaches anyone
+    async def blow_up(messages, **kwargs):
+        raise RuntimeError("boom")
+
+    ai.complete = blow_up
+    # the real browser gets a response, not an exception, so ask the test
+    # client for the same
+    crashing_client = TestClient(main.app, raise_server_exceptions=False)
+    crashed = crashing_client.post(
+        "/v1/ai/canvas-agent",
+        headers=AUTH,
+        json={"messages": [{"role": "user", "content": "hi"}]},
+    )
+    ok &= check(
+        "an unexpected failure answers 500 rather than dropping the connection",
+        crashed.status_code == 500 and "message" in crashed.json(),
+        crashed.status_code,
+    )
+finally:
+    ai.complete, ai.is_configured = _real_complete, _real_configured
+
 print("\n" + ("ALL PASS" if ok else "SOME FAILURES"))
 sys.exit(0 if ok else 1)

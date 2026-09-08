@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-import agent as canvas_agent
+import agent
 import ai
 from auth import AuthContext, get_current_context
 from db import get_db
@@ -200,7 +200,7 @@ async def canvas_agent(
     response.headers["X-Ratelimit-Remaining"] = str(remaining)
 
     board = body.board.model_dump() if body.board else None
-    messages = canvas_agent.build_messages(
+    messages = agent.build_messages(
         [message.model_dump() for message in body.messages],
         board,
         [attachment.model_dump() for attachment in body.attachments],
@@ -213,12 +213,12 @@ async def canvas_agent(
             status_code=exc.status, detail={"statusCode": exc.status, "message": str(exc)}
         ) from exc
 
-    reply, action = canvas_agent.split_action(raw)
+    reply, action = agent.split_action(raw)
 
     operations = None
     if action:
         settings = db.get(UserSettings, ctx.user_id)
-        operations = canvas_agent.compile_action(
+        operations = agent.compile_action(
             action, settings.editor_defaults if settings else None, board
         )
 

@@ -2,8 +2,9 @@ import logging
 import os
 
 import socketio
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from db import Base, engine
@@ -73,6 +74,26 @@ app.add_middleware(
     # server; without this the browser hides the header from them
     expose_headers=["WWW-Authenticate", "MCP-Protocol-Version"],
 )
+
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception):
+    """A crash has to come back as a response, not a dropped connection.
+
+    Starlette's default handler re-raises, which skips the CORS middleware —
+    so the browser reports "Failed to fetch" and the real error is invisible to
+    whoever is using the app. Answering here keeps the CORS headers on and
+    gives the client something it can show."""
+    logging.getLogger(__name__).exception(
+        "unhandled error on %s %s", request.method, request.url.path
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "statusCode": 500,
+            "message": "Something went wrong on our side. It has been logged.",
+        },
+    )
+
 
 app.include_router(auth_routes.router)
 app.include_router(ai_routes.router)
