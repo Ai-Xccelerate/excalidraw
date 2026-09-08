@@ -78,6 +78,66 @@ const trashIcon = (
   </svg>
 );
 
+const gridIcon = (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+    <rect x="3" y="3" width="8" height="8" rx="1.5" />
+    <rect x="13" y="3" width="8" height="8" rx="1.5" />
+    <rect x="3" y="13" width="8" height="8" rx="1.5" />
+    <rect x="13" y="13" width="8" height="8" rx="1.5" />
+  </svg>
+);
+
+const listIcon = (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+    <rect x="3" y="4" width="18" height="3" rx="1.5" />
+    <rect x="3" y="10.5" width="18" height="3" rx="1.5" />
+    <rect x="3" y="17" width="18" height="3" rx="1.5" />
+  </svg>
+);
+
+const searchIcon = (
+  <svg
+    viewBox="0 0 24 24"
+    width="15"
+    height="15"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+  >
+    <circle cx="11" cy="11" r="7" />
+    <line x1="16.5" y1="16.5" x2="21" y2="21" />
+  </svg>
+);
+
+const VIEW_KEY = "aixdraw-dashboard-view";
+const SORT_KEY = "aixdraw-dashboard-sort";
+
+type SortKey = "recent" | "oldest" | "az" | "za";
+type FilterKey = "all" | "mine" | "shared" | "unfiled";
+
+const SORT_LABELS: Record<SortKey, string> = {
+  recent: "Last modified",
+  oldest: "Oldest first",
+  az: "Name A–Z",
+  za: "Name Z–A",
+};
+
+const FILTER_LABELS: Record<FilterKey, string> = {
+  all: "All drawings",
+  mine: "Owned by me",
+  shared: "Shared with me",
+  unfiled: "Not in a collection",
+};
+
+const readStored = <T extends string>(key: string, fallback: T): T => {
+  try {
+    return (window.localStorage.getItem(key) as T | null) ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 /** the Trash behaves like a collection in the sidebar, but it isn't one — no
  * row in the collections table has this id */
 const TRASH_VIEW = "__trash__";
@@ -108,19 +168,22 @@ const relativeTime = (iso: string): string => {
 
 const openDrawing = (id: string) => window.location.assign(`/d/${id}`);
 
-const DrawingCard = ({
+type ViewMode = "grid" | "list";
+
+/** the ⋯ menu is the same set of actions in both layouts, so it lives in one
+ * place rather than being written out twice */
+const DrawingMenu = ({
   drawing,
   collections,
   onChanged,
+  onRename,
 }: {
   drawing: DrawingSummary;
   collections: CollectionRecord[];
   onChanged: () => void;
+  onRename: () => void;
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [title, setTitle] = useState(drawing.title || "Untitled");
-  const canEdit = drawing.role === "owner" || drawing.role === "editor";
   const actionsRef = useRef<HTMLDivElement>(null);
 
   // close the ⋯ menu on any click outside it (the kebab itself still toggles)
@@ -140,6 +203,84 @@ const DrawingCard = ({
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
 
+  return (
+    <div className="aix-card__actions" ref={actionsRef}>
+      <button
+        className="aix-kebab"
+        onClick={() => setMenuOpen((v) => !v)}
+        aria-label="Drawing actions"
+      >
+        ⋯
+      </button>
+      {menuOpen && (
+        <div className="aix-menu">
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              onRename();
+            }}
+          >
+            Rename
+          </button>
+          {collections.length > 0 && (
+            <div className="aix-menu__group">
+              <div className="aix-menu__label">Move to</div>
+              <button
+                onClick={async () => {
+                  setMenuOpen(false);
+                  await moveDrawing(drawing.id, null);
+                  onChanged();
+                }}
+              >
+                No collection
+              </button>
+              {collections.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={async () => {
+                    setMenuOpen(false);
+                    await moveDrawing(drawing.id, c.id);
+                    onChanged();
+                  }}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {drawing.role === "owner" && (
+            <button
+              className="aix-menu__danger"
+              onClick={async () => {
+                setMenuOpen(false);
+                await deleteDrawing(drawing.id);
+                onChanged();
+              }}
+            >
+              Move to Trash
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const DrawingCard = ({
+  drawing,
+  collections,
+  view,
+  onChanged,
+}: {
+  drawing: DrawingSummary;
+  collections: CollectionRecord[];
+  view: ViewMode;
+  onChanged: () => void;
+}) => {
+  const [renaming, setRenaming] = useState(false);
+  const [title, setTitle] = useState(drawing.title || "Untitled");
+  const canEdit = drawing.role === "owner" || drawing.role === "editor";
+
   const commitRename = async () => {
     setRenaming(false);
     const trimmed = title.trim();
@@ -151,8 +292,75 @@ const DrawingCard = ({
     }
   };
 
+  const nameField = renaming ? (
+    <input
+      autoFocus
+      value={title}
+      onChange={(e) => setTitle(e.target.value)}
+      onBlur={commitRename}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          commitRename();
+        } else if (e.key === "Escape") {
+          setTitle(drawing.title || "Untitled");
+          setRenaming(false);
+        }
+      }}
+    />
+  ) : (
+    <div className="aix-card__title" onClick={() => openDrawing(drawing.id)}>
+      {drawing.title || "Untitled"}
+    </div>
+  );
+
+  const menu = canEdit ? (
+    <DrawingMenu
+      drawing={drawing}
+      collections={collections}
+      onChanged={onChanged}
+      onRename={() => setRenaming(true)}
+    />
+  ) : null;
+
+  // an owner can file a drawing away by dragging it onto a collection in the
+  // sidebar; the id travels as plain text so the drop handler stays trivial
+  const dragProps = canEdit
+    ? {
+        draggable: true,
+        onDragStart: (event: React.DragEvent) => {
+          event.dataTransfer.setData("text/plain", drawing.id);
+          event.dataTransfer.effectAllowed = "move";
+        },
+      }
+    : {};
+
+  if (view === "list") {
+    return (
+      <div className="aix-row" {...dragProps}>
+        <button
+          className="aix-row__thumb"
+          onClick={() => openDrawing(drawing.id)}
+          style={
+            drawing.thumbnail
+              ? { backgroundImage: `url(${drawing.thumbnail})` }
+              : undefined
+          }
+        >
+          {!drawing.thumbnail && <img src={LOGO_LIGHT} alt="" aria-hidden />}
+        </button>
+        <div className="aix-row__name">{nameField}</div>
+        <div className="aix-row__collection">
+          {collections.find((c) => c.id === drawing.collection_id)?.name ?? "—"}
+        </div>
+        <div className="aix-row__role">{drawing.role}</div>
+        <div className="aix-row__age">{relativeTime(drawing.updated_at)}</div>
+        {menu}
+      </div>
+    );
+  }
+
   return (
-    <div className={clsx("aix-card", { "aix-card--menu-open": menuOpen })}>
+    <div className="aix-card" {...dragProps}>
       <button
         className="aix-card__thumb"
         onClick={() => openDrawing(drawing.id)}
@@ -169,94 +377,10 @@ const DrawingCard = ({
       </button>
       <div className="aix-card__meta">
         <div className="aix-card__info">
-          {renaming ? (
-            <input
-              autoFocus
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onBlur={commitRename}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  commitRename();
-                } else if (e.key === "Escape") {
-                  setTitle(drawing.title || "Untitled");
-                  setRenaming(false);
-                }
-              }}
-            />
-          ) : (
-            <div
-              className="aix-card__title"
-              onClick={() => openDrawing(drawing.id)}
-            >
-              {drawing.title || "Untitled"}
-            </div>
-          )}
+          {nameField}
           <div className="aix-card__role">{drawing.role}</div>
         </div>
-        {canEdit && (
-          <div className="aix-card__actions" ref={actionsRef}>
-            <button
-              className="aix-kebab"
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-label="Drawing actions"
-            >
-              ⋯
-            </button>
-            {menuOpen && (
-              <>
-                <div className="aix-menu">
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setRenaming(true);
-                    }}
-                  >
-                    Rename
-                  </button>
-                  {collections.length > 0 && (
-                    <div className="aix-menu__group">
-                      <div className="aix-menu__label">Move to</div>
-                      <button
-                        onClick={async () => {
-                          setMenuOpen(false);
-                          await moveDrawing(drawing.id, null);
-                          onChanged();
-                        }}
-                      >
-                        No collection
-                      </button>
-                      {collections.map((c) => (
-                        <button
-                          key={c.id}
-                          onClick={async () => {
-                            setMenuOpen(false);
-                            await moveDrawing(drawing.id, c.id);
-                            onChanged();
-                          }}
-                        >
-                          {c.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {drawing.role === "owner" && (
-                    <button
-                      className="aix-menu__danger"
-                      onClick={async () => {
-                        setMenuOpen(false);
-                        await deleteDrawing(drawing.id);
-                        onChanged();
-                      }}
-                    >
-                      Move to Trash
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        {menu}
       </div>
     </div>
   );
@@ -366,6 +490,15 @@ const DashboardShell = () => {
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(
     null,
   );
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>(() =>
+    readStored<SortKey>(SORT_KEY, "recent"),
+  );
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const [view, setView] = useState<ViewMode>(() =>
+    readStored<ViewMode>(VIEW_KEY, "grid"),
+  );
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [addingCollection, setAddingCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -411,6 +544,81 @@ const DashboardShell = () => {
 
   const trashOpen = activeCollectionId === TRASH_VIEW;
 
+  const setViewMode = (next: ViewMode) => {
+    setView(next);
+    try {
+      window.localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // a lost preference is not worth failing the click over
+    }
+  };
+
+  const setSortKey = (next: SortKey) => {
+    setSort(next);
+    try {
+      window.localStorage.setItem(SORT_KEY, next);
+    } catch {
+      // as above
+    }
+  };
+
+  const search = (list: DrawingSummary[]) => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) {
+      return list;
+    }
+    return list.filter((d) =>
+      (d.title || "Untitled").toLowerCase().includes(needle),
+    );
+  };
+
+  const sortList = (list: DrawingSummary[]) =>
+    [...list].sort((a, b) => {
+      const at = new Date(a.updated_at).getTime();
+      const bt = new Date(b.updated_at).getTime();
+      const an = (a.title || "Untitled").toLowerCase();
+      const bn = (b.title || "Untitled").toLowerCase();
+      switch (sort) {
+        case "oldest":
+          return at - bt;
+        case "az":
+          return an.localeCompare(bn);
+        case "za":
+          return bn.localeCompare(an);
+        default:
+          return bt - at;
+      }
+    });
+
+  /** files a drawing into a collection by drag, then clears the highlight */
+  const dropInto = async (
+    event: React.DragEvent,
+    collectionId: string | null,
+  ) => {
+    event.preventDefault();
+    setDropTarget(null);
+    const id = event.dataTransfer.getData("text/plain");
+    if (!id) {
+      return;
+    }
+    try {
+      await moveDrawing(id, collectionId);
+      refresh();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const dropProps = (key: string, collectionId: string | null) => ({
+    onDragOver: (event: React.DragEvent) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      setDropTarget(key);
+    },
+    onDragLeave: () => setDropTarget((t) => (t === key ? null : t)),
+    onDrop: (event: React.DragEvent) => dropInto(event, collectionId),
+  });
+
   const inScope = (d: DrawingSummary) =>
     workspaceId ? d.workspace_id === workspaceId : d.workspace_id === null;
 
@@ -418,32 +626,38 @@ const DashboardShell = () => {
     if (!drawings) {
       return [];
     }
-    return drawings
+    const filtered = drawings
       .filter(inScope)
       .filter((d) =>
         activeCollectionId && activeCollectionId !== TRASH_VIEW
           ? d.collection_id === activeCollectionId
           : true,
       )
-      .sort(
-        (a, b) =>
-          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-      );
+      .filter((d) => {
+        switch (filter) {
+          case "mine":
+            return d.role === "owner";
+          case "shared":
+            return d.role !== "owner";
+          case "unfiled":
+            return d.collection_id === null;
+          default:
+            return true;
+        }
+      });
+    return sortList(search(filtered));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawings, workspaceId, activeCollectionId]);
+  }, [drawings, workspaceId, activeCollectionId, filter, query, sort]);
 
   const sharedDrawings = useMemo(() => {
     if (!drawings) {
       return [];
     }
-    return drawings
-      .filter((d) => d.role !== "owner" && !inScope(d))
-      .sort(
-        (a, b) =>
-          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-      );
+    return sortList(
+      search(drawings.filter((d) => d.role !== "owner" && !inScope(d))),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawings, workspaceId]);
+  }, [drawings, workspaceId, query, sort]);
 
   const startDrawing = async () => {
     try {
@@ -493,10 +707,12 @@ const DashboardShell = () => {
             </button>
           </div>
           <button
-            className={`aix-nav__item ${
-              activeCollectionId === null ? "aix-nav__item--active" : ""
-            }`}
+            className={clsx("aix-nav__item", {
+              "aix-nav__item--active": activeCollectionId === null,
+              "aix-nav__item--drop": dropTarget === "all",
+            })}
             onClick={() => setActiveCollectionId(null)}
+            {...dropProps("all", null)}
           >
             All drawings
           </button>
@@ -523,6 +739,8 @@ const DashboardShell = () => {
               key={c.id}
               collection={c}
               active={activeCollectionId === c.id}
+              dropping={dropTarget === c.id}
+              dropProps={dropProps(c.id, c.id)}
               onSelect={() => setActiveCollectionId(c.id)}
               onChanged={refresh}
               onDeleted={() => {
@@ -645,6 +863,67 @@ const DashboardShell = () => {
 
         {error && <div className="aix-error">{error}</div>}
 
+        {!trashOpen && (
+          <div className="aix-toolbar">
+            <label className="aix-search">
+              <span className="aix-search__icon">{searchIcon}</span>
+              <input
+                type="search"
+                placeholder="Search drawings"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+
+            <select
+              className="aix-select"
+              aria-label="Filter drawings"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as FilterKey)}
+            >
+              {(Object.keys(FILTER_LABELS) as FilterKey[]).map((key) => (
+                <option key={key} value={key}>
+                  {FILTER_LABELS[key]}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="aix-select"
+              aria-label="Sort drawings"
+              value={sort}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+            >
+              {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                <option key={key} value={key}>
+                  {SORT_LABELS[key]}
+                </option>
+              ))}
+            </select>
+
+            <div className="aix-viewtoggle">
+              <button
+                className={view === "grid" ? "is-active" : ""}
+                onClick={() => setViewMode("grid")}
+                aria-label="Grid view"
+                aria-pressed={view === "grid"}
+                title="Grid view"
+              >
+                {gridIcon}
+              </button>
+              <button
+                className={view === "list" ? "is-active" : ""}
+                onClick={() => setViewMode("list")}
+                aria-label="List view"
+                aria-pressed={view === "list"}
+                title="List view"
+              >
+                {listIcon}
+              </button>
+            </div>
+          </div>
+        )}
+
         {trashOpen ? (
           <section>
             <p className="aix-trash-note">
@@ -671,15 +950,28 @@ const DashboardShell = () => {
               <div className="aix-empty">Loading…</div>
             ) : scopeDrawings.length === 0 ? (
               <div className="aix-empty">
-                No drawings here yet. Hit “Start drawing” to create one.
+                {query.trim()
+                  ? `Nothing matches “${query.trim()}”.`
+                  : "No drawings here yet. Hit “Start drawing” to create one."}
               </div>
             ) : (
-              <div className="aix-grid">
+              <div className={view === "list" ? "aix-list" : "aix-grid"}>
+                {view === "list" && (
+                  <div className="aix-row aix-row--head">
+                    <span />
+                    <div className="aix-row__name">Name</div>
+                    <div className="aix-row__collection">Collection</div>
+                    <div className="aix-row__role">Role</div>
+                    <div className="aix-row__age">Modified</div>
+                    <span />
+                  </div>
+                )}
                 {scopeDrawings.map((d) => (
                   <DrawingCard
                     key={d.id}
                     drawing={d}
                     collections={collections}
+                    view={view}
                     onChanged={refresh}
                   />
                 ))}
@@ -691,12 +983,13 @@ const DashboardShell = () => {
         {!trashOpen && sharedDrawings.length > 0 && (
           <section>
             <h2>Shared with you</h2>
-            <div className="aix-grid">
+            <div className={view === "list" ? "aix-list" : "aix-grid"}>
               {sharedDrawings.map((d) => (
                 <DrawingCard
                   key={d.id}
                   drawing={d}
                   collections={collections}
+                  view={view}
                   onChanged={refresh}
                 />
               ))}
@@ -711,12 +1004,20 @@ const DashboardShell = () => {
 const CollectionRow = ({
   collection,
   active,
+  dropping,
+  dropProps,
   onSelect,
   onChanged,
   onDeleted,
 }: {
   collection: CollectionRecord;
   active: boolean;
+  dropping: boolean;
+  dropProps: {
+    onDragOver: (event: React.DragEvent) => void;
+    onDragLeave: () => void;
+    onDrop: (event: React.DragEvent) => void;
+  };
   onSelect: () => void;
   onChanged: () => void;
   onDeleted: () => void;
@@ -756,7 +1057,13 @@ const CollectionRow = ({
   }
 
   return (
-    <div className={`aix-collection ${active ? "aix-collection--active" : ""}`}>
+    <div
+      className={clsx("aix-collection", {
+        "aix-collection--active": active,
+        "aix-collection--drop": dropping,
+      })}
+      {...dropProps}
+    >
       <button className="aix-collection__name" onClick={onSelect}>
         {collection.name}
       </button>

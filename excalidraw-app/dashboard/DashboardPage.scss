@@ -198,6 +198,12 @@ $hover: #f4f4f7;
       color: $aix-orange;
     }
 
+    // the row a dragged drawing would land in
+    &--drop {
+      background: rgba($aix-orange, 0.12);
+      box-shadow: inset 0 0 0 1px rgba($aix-orange, 0.5);
+    }
+
     &--trash {
       display: flex;
       align-items: center;
@@ -281,6 +287,12 @@ $hover: #f4f4f7;
       color: $aix-orange;
       font-weight: 600;
     }
+  }
+
+  // the collection a dragged drawing would land in
+  &--drop {
+    background: rgba($aix-orange, 0.12);
+    box-shadow: inset 0 0 0 1px rgba($aix-orange, 0.5);
   }
 
   &__name {
@@ -399,6 +411,189 @@ $hover: #f4f4f7;
   color: $muted;
   font-size: 13px;
   margin: 0 0 16px;
+}
+
+.aix-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.aix-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 240px;
+  max-width: 340px;
+
+  &__icon {
+    position: absolute;
+    left: 11px;
+    display: inline-flex;
+    color: $muted;
+    pointer-events: none;
+  }
+
+  input {
+    width: 100%;
+    border: 1px solid $line;
+    border-radius: 9px;
+    background: #fff;
+    padding: 8px 12px 8px 33px;
+    font-size: 13px;
+    font-family: inherit;
+    color: inherit;
+
+    &::placeholder {
+      color: $muted;
+    }
+
+    &:focus {
+      outline: none;
+      border-color: rgba($aix-orange, 0.6);
+      box-shadow: 0 0 0 3px rgba($aix-orange, 0.12);
+    }
+  }
+}
+
+.aix-select {
+  border: 1px solid $line;
+  border-radius: 9px;
+  background: #fff;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #45454d;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: rgba($aix-orange, 0.6);
+  }
+}
+
+.aix-viewtoggle {
+  display: flex;
+  margin-left: auto;
+  border: 1px solid $line;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #fff;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: none;
+    background: transparent;
+    color: $muted;
+    cursor: pointer;
+
+    &:hover {
+      background: $hover;
+    }
+
+    &.is-active {
+      background: rgba($aix-orange, 0.12);
+      color: $aix-orange;
+    }
+  }
+}
+
+.aix-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid $line;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.aix-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 150px 90px 110px 36px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-top: 1px solid $line;
+
+  &:first-child {
+    border-top: none;
+  }
+
+  &:hover {
+    background: $hover;
+  }
+
+  &--head {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: $muted;
+    background: #fbfbfc;
+
+    &:hover {
+      background: #fbfbfc;
+    }
+  }
+
+  &__thumb {
+    width: 44px;
+    height: 32px;
+    border: 1px solid $line;
+    border-radius: 6px;
+    background-color: #f4f4f7;
+    background-size: cover;
+    background-position: center;
+    cursor: pointer;
+    padding: 0;
+
+    img {
+      width: 18px;
+      opacity: 0.25;
+    }
+  }
+
+  &__name {
+    min-width: 0;
+
+    .aix-card__title {
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    input {
+      width: 100%;
+    }
+  }
+
+  &__collection,
+  &__role,
+  &__age {
+    font-size: 12px;
+    color: $muted;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__role {
+    text-transform: capitalize;
+  }
+
+  &--head &__role {
+    text-transform: uppercase;
+  }
+
+  .aix-card__actions {
+    justify-self: end;
+  }
 }
 
 .aix-grid {
@@ -680,6 +875,189 @@ $hover: #f4f4f7;
   .aix-main {
     padding: 20px 18px;
   }
+  .aix-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .aix-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 240px;
+    max-width: 340px;
+
+    &__icon {
+      position: absolute;
+      left: 11px;
+      display: inline-flex;
+      color: $muted;
+      pointer-events: none;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid $line;
+      border-radius: 9px;
+      background: #fff;
+      padding: 8px 12px 8px 33px;
+      font-size: 13px;
+      font-family: inherit;
+      color: inherit;
+
+      &::placeholder {
+        color: $muted;
+      }
+
+      &:focus {
+        outline: none;
+        border-color: rgba($aix-orange, 0.6);
+        box-shadow: 0 0 0 3px rgba($aix-orange, 0.12);
+      }
+    }
+  }
+
+  .aix-select {
+    border: 1px solid $line;
+    border-radius: 9px;
+    background: #fff;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #45454d;
+    cursor: pointer;
+
+    &:focus {
+      outline: none;
+      border-color: rgba($aix-orange, 0.6);
+    }
+  }
+
+  .aix-viewtoggle {
+    display: flex;
+    margin-left: auto;
+    border: 1px solid $line;
+    border-radius: 9px;
+    overflow: hidden;
+    background: #fff;
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border: none;
+      background: transparent;
+      color: $muted;
+      cursor: pointer;
+
+      &:hover {
+        background: $hover;
+      }
+
+      &.is-active {
+        background: rgba($aix-orange, 0.12);
+        color: $aix-orange;
+      }
+    }
+  }
+
+  .aix-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid $line;
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .aix-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 150px 90px 110px 36px;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-top: 1px solid $line;
+
+    &:first-child {
+      border-top: none;
+    }
+
+    &:hover {
+      background: $hover;
+    }
+
+    &--head {
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: $muted;
+      background: #fbfbfc;
+
+      &:hover {
+        background: #fbfbfc;
+      }
+    }
+
+    &__thumb {
+      width: 44px;
+      height: 32px;
+      border: 1px solid $line;
+      border-radius: 6px;
+      background-color: #f4f4f7;
+      background-size: cover;
+      background-position: center;
+      cursor: pointer;
+      padding: 0;
+
+      img {
+        width: 18px;
+        opacity: 0.25;
+      }
+    }
+
+    &__name {
+      min-width: 0;
+
+      .aix-card__title {
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      input {
+        width: 100%;
+      }
+    }
+
+    &__collection,
+    &__role,
+    &__age {
+      font-size: 12px;
+      color: $muted;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    &__role {
+      text-transform: capitalize;
+    }
+
+    &--head &__role {
+      text-transform: uppercase;
+    }
+
+    .aix-card__actions {
+      justify-self: end;
+    }
+  }
+
   .aix-grid {
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: 14px;
@@ -711,6 +1089,189 @@ $hover: #f4f4f7;
       font-size: 19px;
     }
   }
+  .aix-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .aix-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 240px;
+    max-width: 340px;
+
+    &__icon {
+      position: absolute;
+      left: 11px;
+      display: inline-flex;
+      color: $muted;
+      pointer-events: none;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid $line;
+      border-radius: 9px;
+      background: #fff;
+      padding: 8px 12px 8px 33px;
+      font-size: 13px;
+      font-family: inherit;
+      color: inherit;
+
+      &::placeholder {
+        color: $muted;
+      }
+
+      &:focus {
+        outline: none;
+        border-color: rgba($aix-orange, 0.6);
+        box-shadow: 0 0 0 3px rgba($aix-orange, 0.12);
+      }
+    }
+  }
+
+  .aix-select {
+    border: 1px solid $line;
+    border-radius: 9px;
+    background: #fff;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #45454d;
+    cursor: pointer;
+
+    &:focus {
+      outline: none;
+      border-color: rgba($aix-orange, 0.6);
+    }
+  }
+
+  .aix-viewtoggle {
+    display: flex;
+    margin-left: auto;
+    border: 1px solid $line;
+    border-radius: 9px;
+    overflow: hidden;
+    background: #fff;
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border: none;
+      background: transparent;
+      color: $muted;
+      cursor: pointer;
+
+      &:hover {
+        background: $hover;
+      }
+
+      &.is-active {
+        background: rgba($aix-orange, 0.12);
+        color: $aix-orange;
+      }
+    }
+  }
+
+  .aix-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid $line;
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .aix-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 150px 90px 110px 36px;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-top: 1px solid $line;
+
+    &:first-child {
+      border-top: none;
+    }
+
+    &:hover {
+      background: $hover;
+    }
+
+    &--head {
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: $muted;
+      background: #fbfbfc;
+
+      &:hover {
+        background: #fbfbfc;
+      }
+    }
+
+    &__thumb {
+      width: 44px;
+      height: 32px;
+      border: 1px solid $line;
+      border-radius: 6px;
+      background-color: #f4f4f7;
+      background-size: cover;
+      background-position: center;
+      cursor: pointer;
+      padding: 0;
+
+      img {
+        width: 18px;
+        opacity: 0.25;
+      }
+    }
+
+    &__name {
+      min-width: 0;
+
+      .aix-card__title {
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      input {
+        width: 100%;
+      }
+    }
+
+    &__collection,
+    &__role,
+    &__age {
+      font-size: 12px;
+      color: $muted;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    &__role {
+      text-transform: capitalize;
+    }
+
+    &--head &__role {
+      text-transform: uppercase;
+    }
+
+    .aix-card__actions {
+      justify-self: end;
+    }
+  }
+
   .aix-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 12px;
