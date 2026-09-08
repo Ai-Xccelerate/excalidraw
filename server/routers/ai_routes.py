@@ -208,12 +208,25 @@ async def canvas_agent(
 
     try:
         raw = await ai.complete(messages)
+        reply, action = agent.split_action(raw)
+
+        # The model sometimes announces a drawing and forgets the block. From
+        # the user's side that is indistinguishable from the app being broken —
+        # they are told it is on the canvas and find nothing there. Ask once
+        # for the block it left out rather than making them say "did you".
+        if action is None and agent.claims_drawing(reply):
+            retry = await ai.complete(
+                messages
+                + [
+                    {"role": "assistant", "content": raw},
+                    {"role": "system", "content": agent.RETRY_NUDGE},
+                ]
+            )
+            _, action = agent.split_action(retry)
     except ai.AIUnavailable as exc:
         raise HTTPException(
             status_code=exc.status, detail={"statusCode": exc.status, "message": str(exc)}
         ) from exc
-
-    reply, action = agent.split_action(raw)
 
     operations = None
     if action:

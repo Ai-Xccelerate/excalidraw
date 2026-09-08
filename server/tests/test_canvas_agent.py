@@ -416,6 +416,31 @@ ok &= check(
     "expected some multi-segment routes",
 )
 
+# a detailed request means a detailed diagram — there is no node budget
+big_nodes = [{"id": f"s{i}", "label": f"Stage {i}"} for i in range(26)]
+big_edges = [{"from": f"s{i}", "to": f"s{i + 1}"} for i in range(25)]
+big_groups = [
+    {"label": f"Phase {phase}", "nodes": [f"s{i}" for i in range(phase * 7, min(phase * 7 + 7, 26))]}
+    for phase in range(4)
+]
+big = agent.compile_action(
+    {
+        "action": "draw",
+        "direction": "right",
+        "nodes": big_nodes,
+        "edges": big_edges,
+        "groups": big_groups,
+    },
+    None,
+    None,
+)
+ok &= check("a 26-node diagram draws", big["summary"]["created"] == 26, big["summary"])
+ok &= check(
+    "and its wiring still avoids the shapes",
+    _through_boxes(big["elements"]) == 0,
+    _through_boxes(big["elements"]),
+)
+
 ok &= check(
     "everything is drawn clean, whatever the user's sloppiness setting",
     {e["roughness"] for e in agent.compile_action(
@@ -501,6 +526,54 @@ try:
         captured.get("messages"),
     )
 
+    # the transcript that prompted this: the model says it is drawing, attaches
+    # nothing, and the user has to ask "did you create". Ask it once instead.
+    calls: list[int] = []
+
+    async def forgets_then_remembers(messages, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            return "Drawing it now — 3 lanes, blue steps, amber decisions."
+        return '```json\n{"action": "draw", "nodes": [{"id": "a", "label": "Start"}]}\n```'
+
+    ai.complete = forgets_then_remembers
+    recovered = client.post(
+        "/v1/ai/canvas-agent",
+        headers=AUTH,
+        json={"messages": [{"role": "user", "content": "yes"}]},
+    ).json()
+    ok &= check(
+        "a claimed drawing with no block is asked for again",
+        len(calls) == 2 and recovered["operations"]["summary"]["created"] == 1,
+        (len(calls), recovered.get("operations")),
+    )
+    ok &= check(
+        "and the user still reads the original explanation",
+        recovered["reply"].startswith("Drawing it now"),
+        recovered["reply"],
+    )
+
+    # a question must not trigger a retry — that is a model call per turn for
+    # nothing, on every conversational message
+    calls.clear()
+
+    async def just_asks(messages, **kwargs):
+        calls.append(1)
+        return "Which stage should it emphasise — scoring, or handoff?"
+
+    ai.complete = just_asks
+    asked = client.post(
+        "/v1/ai/canvas-agent",
+        headers=AUTH,
+        json={"messages": [{"role": "user", "content": "draw our funnel"}]},
+    ).json()
+    ok &= check(
+        "a question is answered in one call",
+        len(calls) == 1 and asked["operations"] is None,
+        len(calls),
+    )
+
+    ai.complete = fake_complete
     unauthorised = client.post("/v1/ai/canvas-agent", json={"messages": []})
     ok &= check("and it needs a session", unauthorised.status_code == 401, unauthorised.status_code)
 

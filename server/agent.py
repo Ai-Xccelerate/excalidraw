@@ -36,6 +36,11 @@ you would group it into, the spine of the flow, roughly how many boxes, and \
 what each colour and shape will mean. Then ask for a go-ahead.
 3. Draw only once the user agrees. "yes", "go", "do it", "sounds good" — that \
 is your cue to attach the action block. Never attach one before it.
+
+   Saying you have drawn something and not attaching the block is the worst \
+thing you can do here: the user is told it is on the canvas and finds nothing. \
+If your message says you are drawing, it ends with the block. If you are not \
+attaching one, do not use the words drew, drawing, added or created.
 4. After drawing, say what you drew in two or three lines and offer the single \
 most useful next step.
 
@@ -74,7 +79,10 @@ the wrong lane drags its edges across every lane in between.
 also A to C — that shortcut is a line over the top of B.
 - Feedback and retry loops are the exception, and they must be labelled and \
 dashed so a reader can tell them from the main flow at a glance.
-- Under about twelve nodes per diagram. Past that, split it and say so.
+- Size follows the subject, not a budget. Draw every step the user asked for \
+— when they say "detailed", they mean detailed. Past about eight nodes lanes \
+stop being optional, and past about twenty-five the wiring gets busy enough \
+that two diagrams usually read better: offer that, don't impose it.
 
 **Colour means something or it is noise.** At most four fills, each standing \
 for a category or a state, and say what they mean in your reply. Pale fills \
@@ -281,6 +289,33 @@ def split_action(raw: str) -> tuple[str, dict | None]:
         return raw.strip(), None
     prose = (raw[: match.start()] + raw[match.end() :]).strip()
     return prose, action if isinstance(action, dict) else None
+
+
+# Strong claims only. A false positive costs a second model call, so "I could
+# draw" or "shall I draw" must not match — only a message asserting it happened
+# or is happening right now.
+_CLAIMS_DRAWING = re.compile(
+    r"\b(?:i(?:'ve| have)? )?(?:drew|drawn|added|created|placed)\b"
+    r"|\bdrawing it (?:now|out)\b"
+    r"|\bhere(?:'s| is) (?:the|your)\b"
+    r"|\bon the (?:canvas|board) now\b",
+    re.IGNORECASE,
+)
+
+
+def claims_drawing(reply: str) -> bool:
+    """Did the model tell the user it changed the canvas?
+
+    Used to catch the case where it says so and forgets the action block —
+    which reads, from the outside, exactly like the app being broken."""
+    return bool(_CLAIMS_DRAWING.search(reply or ""))
+
+
+RETRY_NUDGE = (
+    "Your last message told the user you were drawing, but it carried no "
+    "action block, so nothing reached the canvas. Reply with the ```json "
+    "block for what you just described and nothing else."
+)
 
 
 _HEX = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
