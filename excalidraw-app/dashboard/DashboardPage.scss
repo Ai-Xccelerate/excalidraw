@@ -197,6 +197,28 @@ $hover: #f4f4f7;
       background: rgba($aix-orange, 0.1);
       color: $aix-orange;
     }
+
+    &--trash {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+  }
+
+  &__icon {
+    display: inline-flex;
+    color: currentColor;
+  }
+
+  &__count {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    color: $muted;
+    background: $hover;
+    border-radius: 999px;
+    padding: 1px 7px;
   }
 }
 
@@ -357,6 +379,26 @@ $hover: #f4f4f7;
   &:hover {
     filter: brightness(1.04);
   }
+
+  // emptying the Trash is unrecoverable, so it doesn't get to look like the
+  // primary thing to do on the page
+  &--danger {
+    background: none;
+    box-shadow: none;
+    color: #d1453b;
+    border: 1px solid rgba(#d1453b, 0.35);
+
+    &:hover {
+      background: rgba(#d1453b, 0.06);
+      filter: none;
+    }
+  }
+}
+
+.aix-trash-note {
+  color: $muted;
+  font-size: 13px;
+  margin: 0 0 16px;
 }
 
 .aix-grid {
@@ -536,6 +578,56 @@ $hover: #f4f4f7;
     border-top: 1px solid $line;
     margin-top: 4px;
     color: #d1453b !important;
+  }
+}
+
+.aix-card--trashed {
+  // the role line is capitalized for "owner"/"editor"; here it carries a
+  // sentence ("90 days left") that shouldn't be title-cased
+  .aix-card__role {
+    text-transform: none;
+  }
+
+  .aix-card__thumb--static {
+    cursor: default;
+    filter: grayscale(1);
+    opacity: 0.65;
+  }
+
+  &:hover {
+    transform: none;
+  }
+}
+
+.aix-card__trash-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px 12px;
+
+  button {
+    flex: 1;
+    border: 1px solid $line;
+    background: #fff;
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #45454d;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: $hover;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+
+  .aix-menu__danger {
+    border-top: 1px solid $line;
+    margin-top: 0;
   }
 }
 

@@ -155,6 +155,11 @@ class Drawing(Base):
     thumbnail: Mapped[str | None] = mapped_column(String, nullable=True)
     scene_version: Mapped[int] = mapped_column(Integer, default=0)
     is_room_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    # set when the drawing is moved to Trash. It stays fully intact and
+    # restorable until it is purged — see services.purge_expired_trash
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(default=_now)
     updated_at: Mapped[datetime] = mapped_column(default=_now, onupdate=_now)
 

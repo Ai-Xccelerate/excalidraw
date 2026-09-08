@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -7,7 +8,7 @@ from sqlalchemy.orm import Session, load_only
 from auth import AuthContext, get_current_context, get_user_workspace_ids
 from db import get_db
 from models import Collection, Drawing, PendingInvite, RoomMember, User
-from services import ensure_personal_workspace
+from services import TRASH_RETENTION_DAYS, ensure_personal_workspace, purge_expired_trash
 
 router = APIRouter(prefix="/api/drawings", tags=["drawings"])
 
@@ -20,6 +21,8 @@ class DrawingSummary(BaseModel):
     thumbnail: str | None = None
     workspace_id: uuid.UUID | None = None
     collection_id: uuid.UUID | None = None
+    deleted_at: str | None = None
+    purges_at: str | None = None
 
     class Config:
         from_attributes = True
@@ -96,6 +99,12 @@ def _summary(drawing: Drawing, role: str) -> DrawingSummary:
         thumbnail=drawing.thumbnail,
         workspace_id=drawing.workspace_id,
         collection_id=drawing.collection_id,
+        deleted_at=drawing.deleted_at.isoformat() if drawing.deleted_at else None,
+        purges_at=(
+            (drawing.deleted_at + timedelta(days=TRASH_RETENTION_DAYS)).isoformat()
+            if drawing.deleted_at
+            else None
+        ),
     )
 
 
@@ -133,11 +142,15 @@ def _assert_collection_writable(
 
 
 async def _get_drawing_or_404(
-    db: Session, drawing_id: uuid.UUID, user_id: str
+    db: Session, drawing_id: uuid.UUID, user_id: str, include_trashed: bool = False
 ) -> tuple[Drawing, str]:
     drawing = db.get(Drawing, drawing_id)
     if not drawing:
         raise HTTPException(status_code=404, detail="Drawing not found")
+    # a drawing in the Trash reads as gone to everything but the Trash itself,
+    # so it can't be opened, saved to, or joined over a socket while it sits there
+    if drawing.deleted_at is not None and not include_trashed:
+        raise HTTPException(status_code=404, detail="Drawing is in the Trash")
     ws_ids = await _accessible_workspace_ids(db, user_id)
     role = _role_for(drawing, user_id, ws_ids)
     if role is None:
@@ -156,6 +169,7 @@ _SUMMARY_COLS = load_only(
     Drawing.workspace_id,
     Drawing.collection_id,
     Drawing.owner_id,
+    Drawing.deleted_at,
 )
 
 
@@ -173,14 +187,17 @@ async def list_drawings(
 
     by_id: dict[uuid.UUID, Drawing] = {}
     for d in (
-        db.query(Drawing).options(_SUMMARY_COLS).filter(Drawing.owner_id == user_id).all()
+        db.query(Drawing)
+        .options(_SUMMARY_COLS)
+        .filter(Drawing.owner_id == user_id, Drawing.deleted_at.is_(None))
+        .all()
     ):
         by_id[d.id] = d
     if shared_roles:
         for d in (
             db.query(Drawing)
             .options(_SUMMARY_COLS)
-            .filter(Drawing.id.in_(list(shared_roles)))
+            .filter(Drawing.id.in_(list(shared_roles)), Drawing.deleted_at.is_(None))
             .all()
         ):
             by_id[d.id] = d
@@ -188,7 +205,7 @@ async def list_drawings(
         for d in (
             db.query(Drawing)
             .options(_SUMMARY_COLS)
-            .filter(Drawing.workspace_id.in_(ws_ids))
+            .filter(Drawing.workspace_id.in_(ws_ids), Drawing.deleted_at.is_(None))
             .all()
         ):
             by_id[d.id] = d
@@ -201,6 +218,36 @@ async def list_drawings(
         return "editor"  # workspace member
 
     return [_summary(d, role(d)) for d in by_id.values()]
+
+
+@router.get("/trash", response_model=list[DrawingSummary])
+async def list_trash(
+    ctx: AuthContext = Depends(get_current_context), db: Session = Depends(get_db)
+):
+    purge_expired_trash(db)
+    rows = (
+        db.query(Drawing)
+        .options(_SUMMARY_COLS)
+        .filter(Drawing.owner_id == ctx.user_id, Drawing.deleted_at.isnot(None))
+        .order_by(Drawing.deleted_at.desc())
+        .all()
+    )
+    return [_summary(d, "owner") for d in rows]
+
+
+@router.delete("/trash")
+async def empty_trash(
+    ctx: AuthContext = Depends(get_current_context), db: Session = Depends(get_db)
+):
+    rows = (
+        db.query(Drawing)
+        .filter(Drawing.owner_id == ctx.user_id, Drawing.deleted_at.isnot(None))
+        .all()
+    )
+    for drawing in rows:
+        db.delete(drawing)
+    db.commit()
+    return {"ok": True, "purged": len(rows)}
 
 
 @router.post("", response_model=DrawingOut)
@@ -272,9 +319,48 @@ async def delete_drawing(
     ctx: AuthContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ):
+    """Moves the drawing to the Trash. It stays there, whole, until it is
+    restored, emptied by hand, or ages out after TRASH_RETENTION_DAYS."""
     drawing, role = await _get_drawing_or_404(db, drawing_id, ctx.user_id)
     if role != "owner":
         raise HTTPException(status_code=403, detail="Only the owner can delete")
+    drawing.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "purges_at": (drawing.deleted_at + timedelta(days=TRASH_RETENTION_DAYS)).isoformat()}
+
+
+@router.post("/{drawing_id}/restore", response_model=DrawingSummary)
+async def restore_drawing(
+    drawing_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+):
+    drawing, role = await _get_drawing_or_404(db, drawing_id, ctx.user_id, include_trashed=True)
+    if role != "owner":
+        raise HTTPException(status_code=403, detail="Only the owner can restore")
+    # the collection it came from may itself be gone by now; the drawing lands
+    # back in "All drawings" rather than pointing at a folder that isn't there
+    if drawing.collection_id is not None and db.get(Collection, drawing.collection_id) is None:
+        drawing.collection_id = None
+    drawing.deleted_at = None
+    db.commit()
+    db.refresh(drawing)
+    return _summary(drawing, role)
+
+
+@router.delete("/{drawing_id}/purge")
+async def purge_drawing(
+    drawing_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+):
+    """Deletes one drawing for good. Only from the Trash: emptying is a
+    deliberate second step, never a single misplaced click."""
+    drawing, role = await _get_drawing_or_404(db, drawing_id, ctx.user_id, include_trashed=True)
+    if role != "owner":
+        raise HTTPException(status_code=403, detail="Only the owner can delete")
+    if drawing.deleted_at is None:
+        raise HTTPException(status_code=400, detail="Move it to the Trash first")
     db.delete(drawing)
     db.commit()
     return {"ok": True}

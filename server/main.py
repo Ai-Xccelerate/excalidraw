@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 
@@ -7,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from db import Base, engine
+from db import Base, SessionLocal, engine
 import models  # noqa: F401  (ensures models are registered before create_all)
 from routers import (
     ai_routes,
@@ -19,6 +20,7 @@ from routers import (
     settings_routes,
     shared_scenes,
 )
+from services import purge_expired_trash
 from sockets import sio
 
 Base.metadata.create_all(bind=engine)
@@ -45,6 +47,9 @@ def _run_lightweight_migrations() -> None:
         "ALTER TABLE drawings ADD COLUMN IF NOT EXISTS thumbnail TEXT",
         "CREATE INDEX IF NOT EXISTS ix_drawings_workspace_id ON drawings (workspace_id)",
         "CREATE INDEX IF NOT EXISTS ix_drawings_collection_id ON drawings (collection_id)",
+        # Trash: a deleted drawing keeps its row until it is purged
+        "ALTER TABLE drawings ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
+        "CREATE INDEX IF NOT EXISTS ix_drawings_deleted_at ON drawings (deleted_at)",
     ]
     # each in its own transaction: a statement that can't apply to legacy data
     # shouldn't abort the rest of the batch or stop the service from booting
@@ -105,6 +110,28 @@ app.include_router(oauth_routes.router)
 app.include_router(mcp_routes.router)
 # Invites for addresses without an account yet are claimed at signup/login
 # (see auth.claim_pending_invites) rather than by an identity-provider webhook.
+
+
+@app.on_event("startup")
+async def _start_trash_sweeper() -> None:
+    """Trash empties itself after TRASH_RETENTION_DAYS whether or not anyone
+    opens the Trash view, so a purge can't wait on a visit that never comes.
+    Running it in more than one worker is harmless — the delete is idempotent."""
+
+    async def sweep_forever() -> None:
+        while True:
+            db = SessionLocal()
+            try:
+                purged = purge_expired_trash(db)
+                if purged:
+                    logging.getLogger(__name__).info("purged %s expired drawing(s)", purged)
+            except Exception:
+                logging.getLogger(__name__).exception("trash sweep failed")
+            finally:
+                db.close()
+            await asyncio.sleep(60 * 60 * 24)
+
+    asyncio.create_task(sweep_forever())
 
 
 @app.get("/health")

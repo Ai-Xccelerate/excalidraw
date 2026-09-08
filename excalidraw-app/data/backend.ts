@@ -192,6 +192,10 @@ export type DrawingSummary = {
   thumbnail: string | null;
   workspace_id: string | null;
   collection_id: string | null;
+  /** set only for drawings in the Trash */
+  deleted_at?: string | null;
+  /** when the Trash will purge it on its own */
+  purges_at?: string | null;
 };
 
 export type DrawingRecord = {
@@ -241,8 +245,22 @@ export const createDrawing = (
 export const getDrawing = (id: string): Promise<DrawingRecord> =>
   apiFetch(`/api/drawings/${id}`);
 
+/** moves the drawing to the Trash, where it can be restored for 90 days */
 export const deleteDrawing = (id: string): Promise<void> =>
   apiFetch(`/api/drawings/${id}`, { method: "DELETE" });
+
+export const listTrash = (): Promise<DrawingSummary[]> =>
+  apiFetch("/api/drawings/trash");
+
+export const restoreDrawing = (id: string): Promise<DrawingSummary> =>
+  apiFetch(`/api/drawings/${id}/restore`, { method: "POST" });
+
+/** deletes one trashed drawing for good — there is nothing after this */
+export const purgeDrawing = (id: string): Promise<void> =>
+  apiFetch(`/api/drawings/${id}/purge`, { method: "DELETE" });
+
+export const emptyTrash = (): Promise<{ purged: number }> =>
+  apiFetch("/api/drawings/trash", { method: "DELETE" });
 
 export const renameDrawing = (
   id: string,

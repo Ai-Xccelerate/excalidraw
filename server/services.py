@@ -1,8 +1,9 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from models import Workspace, WorkspaceMember
+from models import Drawing, Workspace, WorkspaceMember
 
 
 def ensure_personal_workspace(db: Session, user_id: str, name: str = "My Workspace") -> Workspace:
@@ -23,3 +24,18 @@ def ensure_personal_workspace(db: Session, user_id: str, name: str = "My Workspa
     db.commit()
     db.refresh(workspace)
     return workspace
+
+
+TRASH_RETENTION_DAYS = 90
+
+
+def purge_expired_trash(db: Session) -> int:
+    """Deletes for real the drawings that have sat in Trash past the retention
+    window. Returns how many went. Idempotent, so it is safe to run from more
+    than one worker."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=TRASH_RETENTION_DAYS)
+    expired = db.query(Drawing).filter(Drawing.deleted_at.isnot(None), Drawing.deleted_at < cutoff).all()
+    for drawing in expired:
+        db.delete(drawing)
+    db.commit()
+    return len(expired)

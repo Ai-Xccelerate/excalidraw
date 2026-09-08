@@ -8,8 +8,12 @@ import {
   createDrawing,
   deleteCollection,
   deleteDrawing,
+  emptyTrash,
   listCollections,
   listDrawings,
+  listTrash,
+  purgeDrawing,
+  restoreDrawing,
   listWorkspaces,
   getActiveWorkspaceId,
   setActiveWorkspaceId,
@@ -57,6 +61,29 @@ const signOutIcon = (
     <line x1="21" y1="12" x2="9" y2="12" />
   </svg>
 );
+
+const trashIcon = (
+  <svg
+    viewBox="0 0 24 24"
+    width="15"
+    height="15"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </svg>
+);
+
+/** the Trash behaves like a collection in the sidebar, but it isn't one — no
+ * row in the collections table has this id */
+const TRASH_VIEW = "__trash__";
+
+const daysUntil = (iso: string): number =>
+  Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000));
 
 const relativeTime = (iso: string): string => {
   const diff = Date.now() - new Date(iso).getTime();
@@ -222,7 +249,7 @@ const DrawingCard = ({
                         onChanged();
                       }}
                     >
-                      Delete
+                      Move to Trash
                     </button>
                   )}
                 </div>
@@ -230,6 +257,90 @@ const DrawingCard = ({
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+const TrashCard = ({
+  drawing,
+  onChanged,
+}: {
+  drawing: DrawingSummary;
+  onChanged: () => void;
+}) => {
+  const [busy, setBusy] = useState(false);
+  const left = drawing.purges_at ? daysUntil(drawing.purges_at) : null;
+
+  return (
+    <div className="aix-card aix-card--trashed">
+      <div
+        className="aix-card__thumb aix-card__thumb--static"
+        style={
+          drawing.thumbnail
+            ? { backgroundImage: `url(${drawing.thumbnail})` }
+            : undefined
+        }
+      >
+        {!drawing.thumbnail && <img src={LOGO_LIGHT} alt="" aria-hidden />}
+        {drawing.deleted_at && (
+          <span className="aix-card__age">
+            deleted {relativeTime(drawing.deleted_at)}
+          </span>
+        )}
+      </div>
+      <div className="aix-card__meta">
+        <div className="aix-card__info">
+          <div className="aix-card__title">{drawing.title || "Untitled"}</div>
+          <div className="aix-card__role">
+            {left === null
+              ? "in the Trash"
+              : left === 0
+              ? "purges today"
+              : `${left} day${left === 1 ? "" : "s"} left`}
+          </div>
+        </div>
+      </div>
+      <div className="aix-card__trash-actions">
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await restoreDrawing(drawing.id);
+              onChanged();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Restore
+        </button>
+        <button
+          className="aix-menu__danger"
+          disabled={busy}
+          onClick={async () => {
+            // eslint-disable-next-line no-alert
+            if (
+              !window.confirm(
+                `Delete “${
+                  drawing.title || "Untitled"
+                }” for good? This can't be undone.`,
+              )
+            ) {
+              return;
+            }
+            setBusy(true);
+            try {
+              await purgeDrawing(drawing.id);
+              onChanged();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Delete forever
+        </button>
       </div>
     </div>
   );
@@ -250,6 +361,7 @@ const DashboardShell = () => {
     setWorkspaceIdState(id);
   };
   const [drawings, setDrawings] = useState<DrawingSummary[] | null>(null);
+  const [trash, setTrash] = useState<DrawingSummary[]>([]);
   const [collections, setCollections] = useState<CollectionRecord[]>([]);
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(
     null,
@@ -286,6 +398,9 @@ const DashboardShell = () => {
     listCollections(workspaceId)
       .then(setCollections)
       .catch((e) => setError(e.message));
+    listTrash()
+      .then(setTrash)
+      .catch((e) => setError(e.message));
   };
 
   useEffect(() => {
@@ -293,6 +408,8 @@ const DashboardShell = () => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
+
+  const trashOpen = activeCollectionId === TRASH_VIEW;
 
   const inScope = (d: DrawingSummary) =>
     workspaceId ? d.workspace_id === workspaceId : d.workspace_id === null;
@@ -304,7 +421,9 @@ const DashboardShell = () => {
     return drawings
       .filter(inScope)
       .filter((d) =>
-        activeCollectionId ? d.collection_id === activeCollectionId : true,
+        activeCollectionId && activeCollectionId !== TRASH_VIEW
+          ? d.collection_id === activeCollectionId
+          : true,
       )
       .sort(
         (a, b) =>
@@ -328,7 +447,10 @@ const DashboardShell = () => {
 
   const startDrawing = async () => {
     try {
-      const drawing = await createDrawing("Untitled", activeCollectionId);
+      const drawing = await createDrawing(
+        "Untitled",
+        activeCollectionId === TRASH_VIEW ? null : activeCollectionId,
+      );
       openDrawing(drawing.id);
     } catch (e: any) {
       setError(e.message);
@@ -411,6 +533,19 @@ const DashboardShell = () => {
               }}
             />
           ))}
+
+          <button
+            className={`aix-nav__item aix-nav__item--trash ${
+              trashOpen ? "aix-nav__item--active" : ""
+            }`}
+            onClick={() => setActiveCollectionId(TRASH_VIEW)}
+          >
+            <span className="aix-nav__icon">{trashIcon}</span>
+            Trash
+            {trash.length > 0 && (
+              <span className="aix-nav__count">{trash.length}</span>
+            )}
+          </button>
         </div>
 
         <div className="aix-sidebar__bottom">
@@ -474,41 +609,86 @@ const DashboardShell = () => {
 
       <main className="aix-main">
         <header className="aix-main__header">
-          <h1>Dashboard</h1>
-          <button className="aix-start-btn" onClick={startDrawing}>
-            Start drawing
-          </button>
+          <h1>{trashOpen ? "Trash" : "Dashboard"}</h1>
+          {trashOpen ? (
+            trash.length > 0 && (
+              <button
+                className="aix-start-btn aix-start-btn--danger"
+                onClick={async () => {
+                  // eslint-disable-next-line no-alert
+                  if (
+                    !window.confirm(
+                      `Delete all ${trash.length} drawing${
+                        trash.length === 1 ? "" : "s"
+                      } in the Trash for good? This can't be undone.`,
+                    )
+                  ) {
+                    return;
+                  }
+                  try {
+                    await emptyTrash();
+                    refresh();
+                  } catch (e: any) {
+                    setError(e.message);
+                  }
+                }}
+              >
+                Empty trash
+              </button>
+            )
+          ) : (
+            <button className="aix-start-btn" onClick={startDrawing}>
+              Start drawing
+            </button>
+          )}
         </header>
 
         {error && <div className="aix-error">{error}</div>}
 
-        <section>
-          <h2>
-            {activeCollectionId
-              ? collections.find((c) => c.id === activeCollectionId)?.name
-              : "Recently modified"}
-          </h2>
-          {drawings === null ? (
-            <div className="aix-empty">Loading…</div>
-          ) : scopeDrawings.length === 0 ? (
-            <div className="aix-empty">
-              No drawings here yet. Hit “Start drawing” to create one.
-            </div>
-          ) : (
-            <div className="aix-grid">
-              {scopeDrawings.map((d) => (
-                <DrawingCard
-                  key={d.id}
-                  drawing={d}
-                  collections={collections}
-                  onChanged={refresh}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+        {trashOpen ? (
+          <section>
+            <p className="aix-trash-note">
+              Deleted drawings stay here for 90 days, then are removed for good.
+            </p>
+            {trash.length === 0 ? (
+              <div className="aix-empty">The Trash is empty.</div>
+            ) : (
+              <div className="aix-grid">
+                {trash.map((d) => (
+                  <TrashCard key={d.id} drawing={d} onChanged={refresh} />
+                ))}
+              </div>
+            )}
+          </section>
+        ) : (
+          <section>
+            <h2>
+              {activeCollectionId
+                ? collections.find((c) => c.id === activeCollectionId)?.name
+                : "Recently modified"}
+            </h2>
+            {drawings === null ? (
+              <div className="aix-empty">Loading…</div>
+            ) : scopeDrawings.length === 0 ? (
+              <div className="aix-empty">
+                No drawings here yet. Hit “Start drawing” to create one.
+              </div>
+            ) : (
+              <div className="aix-grid">
+                {scopeDrawings.map((d) => (
+                  <DrawingCard
+                    key={d.id}
+                    drawing={d}
+                    collections={collections}
+                    onChanged={refresh}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
-        {sharedDrawings.length > 0 && (
+        {!trashOpen && sharedDrawings.length > 0 && (
           <section>
             <h2>Shared with you</h2>
             <div className="aix-grid">

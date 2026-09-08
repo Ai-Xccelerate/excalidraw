@@ -41,7 +41,11 @@ const handleNewDrawing = async () => {
 
 const handleDeleteDrawing = async (drawingId: string) => {
   // eslint-disable-next-line no-alert
-  if (!window.confirm("Delete this drawing? This can't be undone.")) {
+  if (
+    !window.confirm(
+      "Move this drawing to the Trash? You can restore it from the dashboard for 90 days.",
+    )
+  ) {
     return;
   }
   try {
@@ -100,7 +104,7 @@ export const AppMainMenu: React.FC<{
                 icon={TrashIcon}
                 onSelect={() => handleDeleteDrawing(currentDrawingId)}
               >
-                Delete drawing
+                Move to Trash
               </MainMenu.Item>
             )}
             <MainMenu.ItemCustom>

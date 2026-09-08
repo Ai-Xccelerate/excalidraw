@@ -242,7 +242,7 @@ def _call_tool(name: str, args: dict, ctx: McpContext, db: Session) -> dict:
             return _error("limit must be a number between 1 and 100")
         rows = (
             db.query(Drawing)
-            .filter(Drawing.owner_id == ctx.user_id)
+            .filter(Drawing.owner_id == ctx.user_id, Drawing.deleted_at.is_(None))
             .order_by(Drawing.updated_at.desc())
             .limit(limit)
             .all()
@@ -264,7 +264,7 @@ def _call_tool(name: str, args: dict, ctx: McpContext, db: Session) -> dict:
         drawing = db.get(Drawing, drawing_id)
         # scoped to what this account owns: a token must not read someone
         # else's canvas just because the id was guessed
-        if drawing is None or drawing.owner_id != ctx.user_id:
+        if drawing is None or drawing.owner_id != ctx.user_id or drawing.deleted_at is not None:
             return _error("No drawing with that id")
         texts = [
             element.get("text")

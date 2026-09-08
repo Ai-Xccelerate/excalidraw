@@ -33,6 +33,10 @@ async def _role_for_room(drawing_id: str, user_id: str) -> str | None:
         drawing = db.get(Drawing, drawing_id)
         if not drawing:
             return None
+        # in the Trash it is gone as far as everyone is concerned, including a
+        # collaborator holding an open room link
+        if drawing.deleted_at is not None:
+            return None
         if drawing.owner_id == user_id:
             return "owner"
         member = (
