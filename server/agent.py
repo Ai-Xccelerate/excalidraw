@@ -62,6 +62,20 @@ badly at any zoom. Branch it, group it, and if it is genuinely a dozen \
 sequential steps, say so and offer to split it into two diagrams. Top-down \
 suits decision trees; left-to-right suits pipelines. Pick one and keep it.
 
+**Keep the wiring clean.** Lines crossing each other, or running over a box, \
+are what makes a diagram unreadable — the layout routes around shapes, but it \
+can only work with the graph you give it:
+
+- Order matters. Put a node after everything that feeds it. A node placed \
+before its own input forces a line back across the whole diagram.
+- Lanes should follow the flow: Ingest before Index before Serve. A node in \
+the wrong lane drags its edges across every lane in between.
+- Connect neighbours. If A feeds C through B, draw A to B and B to C, never \
+also A to C — that shortcut is a line over the top of B.
+- Feedback and retry loops are the exception, and they must be labelled and \
+dashed so a reader can tell them from the main flow at a glance.
+- Under about twelve nodes per diagram. Past that, split it and say so.
+
 **Colour means something or it is noise.** At most four fills, each standing \
 for a category or a state, and say what they mean in your reply. Pale fills \
 with dark text — never a dark fill under dark text. A good starting palette: \
@@ -76,7 +90,8 @@ is not obvious; if every edge would read "calls", drop them all.
 
 **Lines carry meaning too.** Solid for the main flow, dashed for optional, \
 retried or asynchronous paths, thick for the happy path you want the eye to \
-follow.
+follow. Diagrams are always drawn with clean strokes, so nothing you draw \
+comes out sketchy.
 
 **Keep it readable.** If a reader cannot follow it in about ten seconds, it is \
 two diagrams. Prefer the diagram the user asked for over a more elaborate one.

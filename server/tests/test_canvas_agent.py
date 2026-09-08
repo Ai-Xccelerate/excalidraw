@@ -8,6 +8,7 @@ board, what it is allowed to change, and what reaches the canvas.
       python tests/test_canvas_agent.py
 """
 
+import itertools
 import os
 import pathlib
 import sys
@@ -257,7 +258,8 @@ def overlaps(a, b):
 
 ok &= check("lanes do not sit on top of each other", not overlaps(frames[0], frames[1]))
 
-# the whole point: a chain that would draw as one long line spreads out
+# lanes keep the flow moving one way: the earlier layout restarted each lane at
+# its own left edge, so every cross-lane edge ran backwards across the diagram
 chain_nodes = [{"id": f"n{i}", "label": f"Step {i}"} for i in range(12)]
 chain_edges = [{"from": f"n{i}", "to": f"n{i + 1}"} for i in range(11)]
 lanes_for_chain = [
@@ -266,40 +268,38 @@ lanes_for_chain = [
     {"label": "End", "nodes": [f"n{i}" for i in range(8, 12)]},
 ]
 
-
-def extent(elements):
-    shapes = [
-        element
-        for element in elements
-        if element["type"] in ("rectangle", "ellipse", "diamond")
-        and element["strokeStyle"] != "dashed"
-    ]
-    width = max(s["x"] + s["width"] for s in shapes) - min(s["x"] for s in shapes)
-    height = max(s["y"] + s["height"] for s in shapes) - min(s["y"] for s in shapes)
-    return width / height
-
-
-flat = extent(
-    agent.compile_action(
-        {"action": "draw", "nodes": chain_nodes, "edges": chain_edges}, None, None
-    )["elements"]
+chained = agent.compile_action(
+    {
+        "action": "draw",
+        "direction": "down",
+        "nodes": chain_nodes,
+        "edges": chain_edges,
+        "groups": lanes_for_chain,
+    },
+    None,
+    None,
+)["elements"]
+placed = {
+    text["text"]: next(
+        shape for shape in chained if shape["id"] == text["containerId"]
+    )
+    for text in chained
+    if text["type"] == "text" and text.get("containerId")
+}
+forward = all(
+    placed[f"Step {i}"]["y"] < placed[f"Step {i + 1}"]["y"] for i in range(11)
 )
-spread = extent(
-    agent.compile_action(
-        {
-            "action": "draw",
-            "nodes": chain_nodes,
-            "edges": chain_edges,
-            "groups": lanes_for_chain,
-        },
-        None,
-        None,
-    )["elements"]
-)
+ok &= check("every step sits after the one that feeds it", forward, "flow runs backwards")
+
+lane_frames = [
+    e for e in chained if e["type"] == "rectangle" and e["strokeStyle"] == "dashed"
+]
 ok &= check(
-    "a twelve-step chain in lanes reads as an area, not a line",
-    flat < 0.5 and 0.4 < spread < 4,
-    f"flat ratio {flat:.2f}, laned ratio {spread:.2f}",
+    "the lanes are separate bands",
+    len(lane_frames) == 3
+    and not any(
+        overlaps(a, b) for a, b in itertools.combinations(lane_frames, 2)
+    ),
 )
 
 ok &= check(
@@ -311,6 +311,119 @@ ok &= check(
         None,
     )["summary"]["grouped"]
     == 0,
+)
+
+# ------------------------------------------------------------- the wiring
+
+
+def _legs(arrow):
+    points = arrow["points"]
+    return [
+        (
+            (arrow["x"] + points[i][0], arrow["y"] + points[i][1]),
+            (arrow["x"] + points[i + 1][0], arrow["y"] + points[i + 1][1]),
+        )
+        for i in range(len(points) - 1)
+    ]
+
+
+def _through_boxes(elements):
+    """Arrows drawn over a shape they do not connect — the thing that made the
+    reported diagram unreadable."""
+    arrows = [e for e in elements if e["type"] == "arrow"]
+    shapes = [
+        e
+        for e in elements
+        if e["type"] in ("rectangle", "ellipse", "diamond")
+        and e["strokeStyle"] != "dashed"
+    ]
+    hits = 0
+    for arrow in arrows:
+        bound = {
+            (arrow.get("startBinding") or {}).get("elementId"),
+            (arrow.get("endBinding") or {}).get("elementId"),
+        }
+        for (x1, y1), (x2, y2) in _legs(arrow):
+            for shape in shapes:
+                if shape["id"] in bound:
+                    continue
+                left, top = shape["x"] + 4, shape["y"] + 4
+                right = shape["x"] + shape["width"] - 4
+                bottom = shape["y"] + shape["height"] - 4
+                for step in range(41):
+                    t = step / 40
+                    px, py = x1 + (x2 - x1) * t, y1 + (y2 - y1) * t
+                    if left < px < right and top < py < bottom:
+                        hits += 1
+                        break
+    return hits
+
+
+pipeline_nodes = [
+    {"id": i, "label": l}
+    for i, l in [
+        ("ds", "Data sources"), ("ld", "Load documents"), ("ct", "Chunk text"),
+        ("emb", "Embed chunks"), ("ee", "Extract entities"), ("br", "Build relations"),
+        ("vdb", "Vector DB"), ("gdb", "Graph DB"), ("uq", "User query"),
+        ("vs", "Vector search"), ("gt", "Graph traversal"), ("fuse", "Fuse & rerank"),
+        ("rel", "Relevant?"), ("llm", "LLM generate"), ("fa", "Final answer"),
+    ]
+]
+pipeline_edges = [
+    {"from": a, "to": b, "label": l}
+    for a, b, l in [
+        ("ds", "ld", None), ("ld", "ct", None), ("ct", "emb", None), ("ct", "ee", None),
+        ("ee", "br", None), ("emb", "vdb", "upsert"), ("br", "gdb", "upsert"),
+        ("uq", "vs", None), ("uq", "gt", None), ("vdb", "vs", None),
+        ("gdb", "gt", "neighbours"), ("vs", "fuse", None), ("gt", "fuse", None),
+        ("fuse", "rel", None), ("rel", "llm", "yes"), ("rel", "vs", "no"),
+        ("llm", "fa", None),
+    ]
+]
+pipeline_groups = [
+    {"label": "Ingestion", "nodes": ["ds", "ld", "ct"]},
+    {"label": "Indexing", "nodes": ["emb", "ee", "br"]},
+    {"label": "Storage", "nodes": ["vdb", "gdb"]},
+    {"label": "Retrieval", "nodes": ["uq", "vs", "gt", "fuse", "rel"]},
+    {"label": "Generation", "nodes": ["llm", "fa"]},
+]
+
+wired = agent.compile_action(
+    {
+        "action": "draw",
+        "direction": "right",
+        "nodes": pipeline_nodes,
+        "edges": pipeline_edges,
+        "groups": pipeline_groups,
+    },
+    None,
+    None,
+)["elements"]
+ok &= check(
+    "no arrow is drawn over a shape it doesn't connect",
+    _through_boxes(wired) == 0,
+    _through_boxes(wired),
+)
+
+corners = [
+    len(e["points"])
+    for e in wired
+    if e["type"] == "arrow" and len(e["points"]) > 2
+]
+ok &= check(
+    "long connections are routed around rather than cut across",
+    len(corners) > 0,
+    "expected some multi-segment routes",
+)
+
+ok &= check(
+    "everything is drawn clean, whatever the user's sloppiness setting",
+    {e["roughness"] for e in agent.compile_action(
+        {"action": "draw", "nodes": [{"id": "a", "label": "A"}]},
+        {"roughness": 2},
+        None,
+    )["elements"]}
+    == {0},
 )
 
 # ------------------------------------------------------- through the route

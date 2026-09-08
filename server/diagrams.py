@@ -19,6 +19,11 @@ FONT_FAMILY = {
     "code": 3,  # Cascadia
 }
 
+# Drawn diagrams are always Architect: a generated chart with wobbling strokes
+# reads as noise, and the sloppier styles blur the arrowheads that carry the
+# meaning. A hand-drawn look is a choice for hand-drawn work.
+DIAGRAM_ROUGHNESS = 0
+
 DEFAULTS: dict[str, Any] = {
     "font_family": "hand-drawn",
     "font_size": 20,
@@ -290,14 +295,12 @@ def _lane_layout(
     for node_id, lane in lane_of.items():
         lanes.setdefault(lane, []).append(node_id)
 
-    # inside a lane the flow keeps its order, but restarts at the top: the lane
-    # is where it happens, the slot is when
-    slot_of: dict[str, int] = {}
-    for members in lanes.values():
-        ordered_depths = sorted({depth[node_id] for node_id in members})
-        rank = {value: index for index, value in enumerate(ordered_depths)}
-        for node_id in members:
-            slot_of[node_id] = rank[depth[node_id]]
+    # Slots are global, not per-lane: a step that happens after another sits
+    # further along whichever lane it is in. Restarting each lane at the left
+    # made every cross-lane edge run backwards across the whole diagram.
+    ordered_depths = sorted(set(depth.values()))
+    rank = {value: index for index, value in enumerate(ordered_depths)}
+    slot_of = {node_id: rank[value] for node_id, value in depth.items()}
 
     across_size = lambda n: sizes[n][1] if horizontal else sizes[n][0]  # noqa: E731
     along_size = lambda n: sizes[n][0] if horizontal else sizes[n][1]  # noqa: E731
@@ -444,7 +447,7 @@ def build_flowchart(
     `groups`: [{label, nodes: [id, ...]}] draws a titled lane behind its
     members and keeps them adjacent in the layout — the difference between a
     diagram and a queue of boxes."""
-    defaults = merged_defaults(user_defaults)
+    defaults = {**merged_defaults(user_defaults), "roughness": DIAGRAM_ROUGHNESS}
     font_size = int(defaults["font_size"])
     font_family = FONT_FAMILY.get(str(defaults["font_family"]), FONT_FAMILY["hand-drawn"])
     horizontal = direction in ("right", "left", "lr", "rl")
@@ -475,6 +478,8 @@ def build_flowchart(
 
     elements: list[dict] = _group_frames(groups, positions, defaults, font_family)
     containers: dict[str, dict] = {}
+    # every route already laid down, so the next one can avoid crossing it
+    drawn_paths: list[list[tuple[float, float]]] = []
 
     for node in nodes:
         node_id = node["id"]
@@ -533,7 +538,16 @@ def build_flowchart(
         arrow = (
             _self_loop(start, defaults, edge)
             if edge["from"] == edge["to"]
-            else _arrow(start, end, defaults, horizontal, edge)
+            else _arrow(
+                start,
+                end,
+                defaults,
+                horizontal,
+                edge,
+                obstacles=list(containers.values()),
+                lane_gap=GAP_ALONG,
+                drawn=drawn_paths,
+            )
         )
         start["boundElements"] = list(start["boundElements"]) + [
             {"id": arrow["id"], "type": "arrow"}
@@ -618,6 +632,122 @@ def _group_frames(
     return frames
 
 
+
+# --------------------------------------------------------------- routing
+
+def _blocked(
+    path: list[tuple[float, float]],
+    boxes: list[dict],
+    ignore: tuple[str, str],
+) -> bool:
+    """Does this route cut through a shape it isn't connecting?"""
+    margin = 6.0
+    for index in range(len(path) - 1):
+        (x1, y1), (x2, y2) = path[index], path[index + 1]
+        for box in boxes:
+            if box["id"] in ignore:
+                continue
+            left, top = box["x"] - margin, box["y"] - margin
+            right = box["x"] + box["width"] + margin
+            bottom = box["y"] + box["height"] + margin
+            # every leg is horizontal or vertical, so an overlap test is enough
+            if min(x1, x2) < right and max(x1, x2) > left:
+                if min(y1, y2) < bottom and max(y1, y2) > top:
+                    return True
+    return False
+
+
+def _candidate_routes(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    horizontal: bool,
+    lane_gap: float,
+) -> list[list[tuple[float, float]]]:
+    """Orthogonal ways to get from one shape to another, simplest first.
+
+    Everything runs through the gaps the layout already leaves between slots
+    and lanes, which is the only reliably empty space on the canvas."""
+    (x1, y1), (x2, y2) = start, end
+    routes: list[list[tuple[float, float]]] = []
+
+    if abs(y1 - y2) < 1 or abs(x1 - x2) < 1:
+        routes.append([start, end])  # straight across
+
+    channels = (0, -14, 14, -28, 28)
+
+    if horizontal:
+        # turn in the gap just after the start, or just before the end, each
+        # offered in a few channels so parallel routes don't stack on one line
+        for base in (x1 + lane_gap / 2, x2 - lane_gap / 2, (x1 + x2) / 2):
+            for channel in channels:
+                turn = base + channel
+                routes.append([start, (turn, y1), (turn, y2), end])
+        # and a detour above or below both, for anything running backwards
+        for side in (min(y1, y2) - lane_gap, max(y1, y2) + lane_gap):
+            routes.append(
+                [start, (x1 + lane_gap / 2, y1), (x1 + lane_gap / 2, side),
+                 (x2 - lane_gap / 2, side), (x2 - lane_gap / 2, y2), end]
+            )
+    else:
+        for base in (y1 + lane_gap / 2, y2 - lane_gap / 2, (y1 + y2) / 2):
+            for channel in channels:
+                turn = base + channel
+                routes.append([start, (x1, turn), (x2, turn), end])
+        for side in (min(x1, x2) - lane_gap, max(x1, x2) + lane_gap):
+            routes.append(
+                [start, (x1, y1 + lane_gap / 2), (side, y1 + lane_gap / 2),
+                 (side, y2 - lane_gap / 2), (x2, y2 - lane_gap / 2), end]
+            )
+
+    routes.append([start, end])  # last resort: a straight line beats no line
+    return routes
+
+
+def _segments(path: list[tuple[float, float]]) -> list[tuple]:
+    return [(path[i], path[i + 1]) for i in range(len(path) - 1)]
+
+
+def _crosses(a: tuple, b: tuple) -> bool:
+    def side(p, q, r):
+        return (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
+
+    (p1, q1), (p2, q2) = a, b
+    d1, d2 = side(p1, q1, p2), side(p1, q1, q2)
+    d3, d4 = side(p2, q2, p1), side(p2, q2, q1)
+    return ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0))
+
+
+def _route(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    boxes: list[dict],
+    ignore: tuple[str, str],
+    horizontal: bool,
+    lane_gap: float,
+    drawn: list[list[tuple[float, float]]] | None = None,
+) -> list[tuple[float, float]]:
+    """The clearest way across: never through a shape, then crossing as few
+    lines already drawn as possible, then as few corners as possible."""
+    laid = [segment for path in (drawn or []) for segment in _segments(path)]
+    best: tuple[int, int, list] | None = None
+
+    for route in _candidate_routes(start, end, horizontal, lane_gap):
+        if _blocked(route, boxes, ignore):
+            continue
+        crossings = sum(
+            1
+            for segment in _segments(route)
+            for other in laid
+            if _crosses(segment, other)
+        )
+        score = (crossings, len(route))
+        if best is None or score < best[:2]:
+            best = (crossings, len(route), route)
+            if crossings == 0 and len(route) <= 2:
+                break
+
+    return best[2] if best else [start, end]
+
 def _sides(start: dict, end: dict, horizontal: bool) -> tuple[list[float], list[float]]:
     """Which side of each box the arrow leaves and enters, as the ratio-based
     fixed points the editor stores on a binding."""
@@ -639,12 +769,32 @@ def _arrow(
     defaults: dict,
     horizontal: bool,
     edge: dict | None = None,
+    obstacles: list[dict] | None = None,
+    lane_gap: float = GAP_ALONG,
+    drawn: list[list[tuple[float, float]]] | None = None,
 ) -> dict:
     edge = edge or {}
     start_ratio, end_ratio = _sides(start, end, horizontal)
     x1, y1 = _point_at(start, start_ratio)
     x2, y2 = _point_at(end, end_ratio)
     elbowed = defaults["arrow_type"] == "elbow"
+
+    path = (
+        _route(
+            (x1, y1),
+            (x2, y2),
+            obstacles,
+            (start["id"], end["id"]),
+            horizontal,
+            lane_gap,
+            drawn,
+        )
+        if obstacles
+        else [(x1, y1), (x2, y2)]
+    )
+    points = [[round(px - x1, 2), round(py - y1, 2)] for px, py in path]
+    if drawn is not None:
+        drawn.append(path)
     # mermaid says what the link means: dotted for a weak link, thick for an
     # emphasised one, and `---` for a connection with no direction
     stroke_style = "dashed" if edge.get("dashed") else defaults["stroke_style"]
@@ -661,7 +811,7 @@ def _arrow(
         y=float(y1),
         width=float(abs(x2 - x1)),
         height=float(abs(y2 - y1)),
-        points=[[0, 0], [float(x2 - x1), float(y2 - y1)]],
+        points=points,
         lastCommittedPoint=None,
         startArrowhead="arrow" if edge.get("head_start") else None,
         endArrowhead="arrow" if edge.get("head_end", True) else None,
@@ -717,11 +867,15 @@ def _edge_label(
 ) -> dict:
     small = max(12, int(font_size * 0.8))
     width = len(label) * small * CHAR_WIDTH_RATIO
+    # the midpoint of the route the arrow actually takes; with orthogonal
+    # routing the straight-line midpoint can sit on top of another shape
+    points = arrow["points"]
+    middle = points[len(points) // 2]
     text = _base(
         defaults,
         type="text",
-        x=float(arrow["x"] + (arrow["points"][1][0] / 2) - width / 2),
-        y=float(arrow["y"] + (arrow["points"][1][1] / 2) - small),
+        x=float(arrow["x"] + middle[0] - width / 2),
+        y=float(arrow["y"] + middle[1] - small),
         width=float(width),
         height=float(small * LINE_HEIGHT),
         text=label,
