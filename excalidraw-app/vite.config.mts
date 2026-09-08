@@ -229,7 +229,7 @@ export default defineConfig(({ mode }) => {
           short_name: "AIX Draw",
           name: "AIX Draw",
           description:
-            "Excalidraw is a whiteboard tool that lets you easily sketch diagrams that have a hand-drawn feel to them.",
+            "AIX Draw is AI Xccelerate's collaborative whiteboard — sketch diagrams, map systems, and think through work together, then share it as a read-only link.",
           icons: [
             {
               src: "android-chrome-192x192.png",
