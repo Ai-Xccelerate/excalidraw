@@ -180,6 +180,139 @@ styled = agent.compile_action(
 label = next(e for e in styled["elements"] if e["type"] == "text")
 ok &= check("agent diagrams use the user's saved font", label["fontFamily"] == 3, label["fontFamily"])
 
+# ---------------------------------------------------------------- lanes
+
+laned = agent.compile_action(
+    {
+        "action": "draw",
+        "direction": "right",
+        "groups": [
+            {"label": "Indexing", "nodes": ["a", "b"]},
+            {"label": "Serving", "nodes": ["c"]},
+        ],
+        "nodes": [
+            {"id": "a", "label": "Ingest"},
+            {"id": "b", "label": "Embed"},
+            {"id": "c", "label": "Answer"},
+        ],
+        "edges": [{"from": "a", "to": "b"}, {"from": "b", "to": "c"}],
+    },
+    None,
+    None,
+)
+frames = [
+    element
+    for element in laned["elements"]
+    if element["type"] == "rectangle" and element["strokeStyle"] == "dashed"
+]
+titles = [
+    element["text"]
+    for element in laned["elements"]
+    if element["type"] == "text" and not element.get("containerId")
+]
+ok &= check("a lane is drawn behind its members", len(frames) == 2, len(frames))
+ok &= check("and titled", titles == ["Indexing", "Serving"], titles)
+ok &= check(
+    "the lane sits behind the nodes it holds",
+    laned["elements"].index(frames[0]) == 0,
+    "frames must come first in z-order",
+)
+ok &= check("the summary counts the lanes", laned["summary"]["grouped"] == 2, laned["summary"])
+
+boxes = [
+    element
+    for element in laned["elements"]
+    if element["type"] in ("rectangle", "ellipse", "diamond")
+    and element["strokeStyle"] != "dashed"
+]
+labels = {
+    text["containerId"]: text["text"]
+    for text in laned["elements"]
+    if text["type"] == "text" and text.get("containerId")
+}
+
+
+def within(box, frame):
+    return (
+        frame["x"] <= box["x"]
+        and box["x"] + box["width"] <= frame["x"] + frame["width"]
+        and frame["y"] <= box["y"]
+        and box["y"] + box["height"] <= frame["y"] + frame["height"]
+    )
+
+
+indexing = {"Ingest", "Embed"}
+in_first = {labels[box["id"]] for box in boxes if within(box, frames[0])}
+ok &= check("a lane's frame contains exactly its members", in_first == indexing, in_first)
+
+# and the lanes are laid out as bands rather than stacked on each other
+def overlaps(a, b):
+    return not (
+        a["x"] + a["width"] <= b["x"]
+        or b["x"] + b["width"] <= a["x"]
+        or a["y"] + a["height"] <= b["y"]
+        or b["y"] + b["height"] <= a["y"]
+    )
+
+
+ok &= check("lanes do not sit on top of each other", not overlaps(frames[0], frames[1]))
+
+# the whole point: a chain that would draw as one long line spreads out
+chain_nodes = [{"id": f"n{i}", "label": f"Step {i}"} for i in range(12)]
+chain_edges = [{"from": f"n{i}", "to": f"n{i + 1}"} for i in range(11)]
+lanes_for_chain = [
+    {"label": "Start", "nodes": [f"n{i}" for i in range(4)]},
+    {"label": "Middle", "nodes": [f"n{i}" for i in range(4, 8)]},
+    {"label": "End", "nodes": [f"n{i}" for i in range(8, 12)]},
+]
+
+
+def extent(elements):
+    shapes = [
+        element
+        for element in elements
+        if element["type"] in ("rectangle", "ellipse", "diamond")
+        and element["strokeStyle"] != "dashed"
+    ]
+    width = max(s["x"] + s["width"] for s in shapes) - min(s["x"] for s in shapes)
+    height = max(s["y"] + s["height"] for s in shapes) - min(s["y"] for s in shapes)
+    return width / height
+
+
+flat = extent(
+    agent.compile_action(
+        {"action": "draw", "nodes": chain_nodes, "edges": chain_edges}, None, None
+    )["elements"]
+)
+spread = extent(
+    agent.compile_action(
+        {
+            "action": "draw",
+            "nodes": chain_nodes,
+            "edges": chain_edges,
+            "groups": lanes_for_chain,
+        },
+        None,
+        None,
+    )["elements"]
+)
+ok &= check(
+    "a twelve-step chain in lanes reads as an area, not a line",
+    flat < 0.5 and 0.4 < spread < 4,
+    f"flat ratio {flat:.2f}, laned ratio {spread:.2f}",
+)
+
+ok &= check(
+    "a lane naming nodes that don't exist is dropped",
+    agent.compile_action(
+        {"action": "draw", "groups": [{"label": "Ghost", "nodes": ["nope"]}],
+         "nodes": [{"id": "a", "label": "A"}]},
+        None,
+        None,
+    )["summary"]["grouped"]
+    == 0,
+)
+
 # ------------------------------------------------------- through the route
 
 # The parsing above all passes with the route itself broken: the first version

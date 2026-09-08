@@ -44,6 +44,12 @@ NODE_PADDING_X = 24
 NODE_PADDING_Y = 20
 GAP_ALONG = 120  # between layers
 GAP_ACROSS = 48  # between siblings in a layer
+GROUP_PADDING = 28  # breathing room inside a lane's frame
+GROUP_TITLE_HEIGHT = 30
+
+# Muted lane tints. Dark enough to read as a region behind pale nodes, light
+# enough that black label text on top stays legible.
+GROUP_TINTS = ["#f1f3f5", "#e7f5ff", "#f3f0ff", "#ebfbee", "#fff9db", "#fff0f6"]
 
 
 def _seed() -> int:
@@ -175,7 +181,10 @@ def _neighbours(
 
 
 def _order_layers(
-    layers: list[list[str]], parents: dict, children: dict
+    layers: list[list[str]],
+    parents: dict,
+    children: dict,
+    group_of: dict[str, int] | None = None,
 ) -> list[list[str]]:
     """Orders each layer by the average position of what it connects to, a few
     times in each direction. Without this a branch drawn late sits wherever it
@@ -202,6 +211,19 @@ def _order_layers(
                 )
 
             ordered[level] = sorted(ordered[level], key=key)
+
+    if group_of:
+        # members of a lane sit together, so the lane is a band rather than
+        # scattered boxes with a box from somewhere else in the middle
+        for level, layer in enumerate(ordered):
+            positions = {node_id: i for i, node_id in enumerate(layer)}
+            ordered[level] = sorted(
+                layer,
+                key=lambda node_id: (
+                    group_of.get(node_id, len(group_of) + 1),
+                    positions[node_id],
+                ),
+            )
 
     return ordered
 
@@ -247,19 +269,105 @@ def _pack(
     return centres
 
 
+def _lane_layout(
+    layers: list[list[str]],
+    sizes: dict,
+    horizontal: bool,
+    reverse: bool,
+    group_of: dict[str, int],
+) -> dict[str, tuple[int, int, int, int]]:
+    """Swimlanes: each lane is a band across the diagram, and the flow runs
+    along it. A pipeline that would otherwise be one long column of fourteen
+    boxes becomes three readable bands side by side."""
+    depth = {
+        node_id: level for level, layer in enumerate(layers) for node_id in layer
+    }
+    # ungrouped nodes share a band of their own, after the named lanes
+    spare = max(group_of.values(), default=-1) + 1
+    lane_of = {node_id: group_of.get(node_id, spare) for node_id in depth}
+
+    lanes: dict[int, list[str]] = {}
+    for node_id, lane in lane_of.items():
+        lanes.setdefault(lane, []).append(node_id)
+
+    # inside a lane the flow keeps its order, but restarts at the top: the lane
+    # is where it happens, the slot is when
+    slot_of: dict[str, int] = {}
+    for members in lanes.values():
+        ordered_depths = sorted({depth[node_id] for node_id in members})
+        rank = {value: index for index, value in enumerate(ordered_depths)}
+        for node_id in members:
+            slot_of[node_id] = rank[depth[node_id]]
+
+    across_size = lambda n: sizes[n][1] if horizontal else sizes[n][0]  # noqa: E731
+    along_size = lambda n: sizes[n][0] if horizontal else sizes[n][1]  # noqa: E731
+
+    # rows line up across lanes, so the diagram reads as a grid rather than
+    # three independent drawings
+    slot_extent: dict[int, float] = {}
+    for node_id, slot in slot_of.items():
+        slot_extent[slot] = max(slot_extent.get(slot, 0), along_size(node_id))
+
+    along_at: dict[int, float] = {}
+    cursor = 0.0
+    for slot in sorted(slot_extent):
+        along_at[slot] = cursor
+        cursor += slot_extent[slot] + GAP_ALONG
+
+    lane_at: dict[int, float] = {}
+    band = 0.0
+    for lane in sorted(lanes):
+        widest = max(across_size(node_id) for node_id in lanes[lane])
+        # room for members that share a slot inside the lane
+        crowd = max(
+            sum(across_size(n) for n in lanes[lane] if slot_of[n] == slot)
+            + GAP_ACROSS * (sum(1 for n in lanes[lane] if slot_of[n] == slot) - 1)
+            for slot in {slot_of[n] for n in lanes[lane]}
+        )
+        lane_at[lane] = band
+        band += max(widest, crowd) + GROUP_PADDING * 2 + GAP_ACROSS * 2
+
+    positions: dict[str, tuple[int, int, int, int]] = {}
+    taken: dict[tuple[int, int], float] = {}
+    total_along = cursor - GAP_ALONG
+
+    for node_id, slot in slot_of.items():
+        lane = lane_of[node_id]
+        width, height, _ = sizes[node_id]
+        offset = taken.get((lane, slot), 0.0)
+        taken[(lane, slot)] = offset + across_size(node_id) + GAP_ACROSS
+
+        along = along_at[slot]
+        if reverse:
+            along = total_along - along - along_size(node_id)
+        across = lane_at[lane] + offset
+
+        positions[node_id] = (
+            (int(along), int(across), width, height)
+            if horizontal
+            else (int(across), int(along), width, height)
+        )
+
+    return positions
+
+
 def _layout(
     layers: list[list[str]],
     sizes: dict,
     edges: list[dict],
     horizontal: bool,
     reverse: bool = False,
+    group_of: dict[str, int] | None = None,
 ) -> dict[str, tuple[int, int, int, int]]:
     """Assigns every node a box. Layers run along one axis; within a layer,
     nodes are pulled towards the middle of whatever they connect to so a parent
     sits over its children and a merge point sits under its sources."""
+    if group_of:
+        return _lane_layout(layers, sizes, horizontal, reverse, group_of)
+
     node_ids = [n for layer in layers for n in layer]
     parents, children = _neighbours(node_ids, edges)
-    layers = _order_layers(layers, parents, children)
+    layers = _order_layers(layers, parents, children, group_of)
 
     centres: dict[str, float] = {}
     for layer in layers:
@@ -329,8 +437,13 @@ def build_flowchart(
     edges: list[dict],
     direction: str = "down",
     user_defaults: dict | None = None,
+    groups: list[dict] | None = None,
 ) -> list[dict]:
-    """`nodes`: [{id, label, shape?}], `edges`: [{from, to, label?}]."""
+    """`nodes`: [{id, label, shape?}], `edges`: [{from, to, label?}].
+
+    `groups`: [{label, nodes: [id, ...]}] draws a titled lane behind its
+    members and keeps them adjacent in the layout — the difference between a
+    diagram and a queue of boxes."""
     defaults = merged_defaults(user_defaults)
     font_size = int(defaults["font_size"])
     font_family = FONT_FAMILY.get(str(defaults["font_family"]), FONT_FAMILY["hand-drawn"])
@@ -341,14 +454,26 @@ def build_flowchart(
     edges = [e for e in edges if e.get("from") in known and e.get("to") in known]
     layers = _layers([node["id"] for node in nodes], edges)
 
+    groups = [
+        group
+        for group in (groups or [])
+        if [member for member in (group.get("nodes") or []) if member in known]
+    ]
+    group_of = {
+        member: index
+        for index, group in enumerate(groups)
+        for member in group.get("nodes", [])
+        if member in known
+    }
+
     sizes = {}
     for node in nodes:
         label = str(node.get("label") or node["id"])
         sizes[node["id"]] = _node_size(label, font_size)
 
-    positions = _layout(layers, sizes, edges, horizontal, reverse)
+    positions = _layout(layers, sizes, edges, horizontal, reverse, group_of)
 
-    elements: list[dict] = []
+    elements: list[dict] = _group_frames(groups, positions, defaults, font_family)
     containers: dict[str, dict] = {}
 
     for node in nodes:
@@ -423,6 +548,74 @@ def build_flowchart(
             elements.append(_edge_label(arrow, str(label), defaults, font_size, font_family))
 
     return elements
+
+
+def _group_frames(
+    groups: list[dict],
+    positions: dict[str, tuple[int, int, int, int]],
+    defaults: dict,
+    font_family: int,
+) -> list[dict]:
+    """A titled region behind each lane. Comes first in the element list, which
+    is Excalidraw's z-order, so the nodes sit on top of it."""
+    frames: list[dict] = []
+
+    for index, group in enumerate(groups):
+        members = [
+            positions[member] for member in group.get("nodes", []) if member in positions
+        ]
+        if not members:
+            continue
+
+        left = min(x for x, _, _, _ in members) - GROUP_PADDING
+        top = min(y for _, y, _, _ in members) - GROUP_PADDING - GROUP_TITLE_HEIGHT
+        right = max(x + width for x, _, width, _ in members) + GROUP_PADDING
+        bottom = max(y + height for _, y, _, height in members) + GROUP_PADDING
+
+        tint = group.get("color") or GROUP_TINTS[index % len(GROUP_TINTS)]
+        frame = _base(
+            defaults,
+            type="rectangle",
+            x=float(left),
+            y=float(top),
+            width=float(right - left),
+            height=float(bottom - top),
+            backgroundColor=tint,
+            fillStyle="solid",
+            strokeColor="#adb5bd",
+            strokeStyle="dashed",
+            strokeWidth=1,
+            # a lane is scenery, not a shape someone drew
+            roughness=0,
+            roundness={"type": 3},
+        )
+        frames.append(frame)
+
+        label = str(group.get("label") or "").strip()
+        if label:
+            frames.append(
+                _base(
+                    defaults,
+                    type="text",
+                    x=float(left + 14),
+                    y=float(top + 8),
+                    width=float(len(label) * 15 * CHAR_WIDTH_RATIO),
+                    height=float(15 * LINE_HEIGHT),
+                    text=label,
+                    originalText=label,
+                    fontSize=15,
+                    fontFamily=font_family,
+                    textAlign="left",
+                    verticalAlign="top",
+                    lineHeight=LINE_HEIGHT,
+                    autoResize=True,
+                    strokeColor="#495057",
+                    backgroundColor="transparent",
+                    roughness=0,
+                )
+            )
+
+    return frames
 
 
 def _sides(start: dict, end: dict, horizontal: bool) -> tuple[list[float], list[float]]:

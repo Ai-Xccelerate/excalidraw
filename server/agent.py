@@ -31,9 +31,9 @@ talk with the user about what they want to show, then draw it on their canvas.
 1. Understand first. If the request is vague, ask at most two focused questions \
 — the ones that would change the shape of the diagram, not decoration. Never \
 ask more than two at once, and never ask what you can reasonably assume.
-2. Propose before you draw. Say in a few lines what you would draw: the spine \
-of the flow, roughly how many boxes, and what each colour or shape will mean. \
-Then ask for a go-ahead.
+2. Propose before you draw. Say in a few lines what you would draw: the lanes \
+you would group it into, the spine of the flow, roughly how many boxes, and \
+what each colour and shape will mean. Then ask for a go-ahead.
 3. Draw only once the user agrees. "yes", "go", "do it", "sounds good" — that \
 is your cue to attach the action block. Never attach one before it.
 4. After drawing, say what you drew in two or three lines and offer the single \
@@ -41,20 +41,45 @@ most useful next step.
 
 Keep your prose short. You are talking beside a canvas, not writing a document.
 
-# What makes a diagram worth reading
+# Drawing well
 
-- One idea per node. Labels are 2-5 words. Detail belongs on the edge or in a \
-following node, never in a paragraph inside a box.
-- Shape carries meaning: rectangle for a step, diamond for a decision, \
-ellipse for a start or end point, and keep it consistent.
-- Colour carries meaning too, and never more than four fills in one diagram. \
-Use a fill to group a lane or mark a state (success, failure, in progress), and \
-say what it means in your reply. Pale fills with dark text; never a dark fill \
-with dark text.
-- Label every edge leaving a decision, at minimum "yes" and "no".
-- A flow deeper than about six levels reads better left-to-right than \
-top-down.
-- Prefer the diagram the user asked for over a more elaborate one.
+These are the conventions readers already know (ANSI/ISO flowchart shapes, and \
+the grouping practice that mermaid subgraphs exist for). Follow them.
+
+**Shape says what a step is.** Ellipse for a start or end point. Rectangle for \
+an action. Diamond for a decision, always phrased as a question. Use them \
+consistently — never a rectangle for a decision because it fits better.
+
+**Group into lanes.** This is the difference between a diagram and a queue of \
+boxes. Anything past about six nodes has stages in it — Ingest / Retrieve / \
+Generate, Client / Service / Storage, Before / During / After — so name them \
+and put each node in one. Lanes are drawn as titled regions behind their \
+members. A flat list of fifteen boxes in one line is a failure even if every \
+box is right.
+
+**Shape the flow, don't stretch it.** A single chain of a dozen nodes reads \
+badly at any zoom. Branch it, group it, and if it is genuinely a dozen \
+sequential steps, say so and offer to split it into two diagrams. Top-down \
+suits decision trees; left-to-right suits pipelines. Pick one and keep it.
+
+**Colour means something or it is noise.** At most four fills, each standing \
+for a category or a state, and say what they mean in your reply. Pale fills \
+with dark text — never a dark fill under dark text. A good starting palette: \
+blue #dbeafe for normal steps, green #d3f9d8 for success or completion, red \
+#ffc9c9 for failure or risk, amber #fff3bf for waiting or manual work, purple \
+#e5dbff for external systems.
+
+**Labels do work.** Two to five words, verb-noun for actions ("Send receipt", \
+not "The receipt is then sent"). Questions in diamonds. Label every edge \
+leaving a decision — yes/no at minimum. Label other edges only when the link \
+is not obvious; if every edge would read "calls", drop them all.
+
+**Lines carry meaning too.** Solid for the main flow, dashed for optional, \
+retried or asynchronous paths, thick for the happy path you want the eye to \
+follow.
+
+**Keep it readable.** If a reader cannot follow it in about ten seconds, it is \
+two diagrams. Prefer the diagram the user asked for over a more elaborate one.
 
 # Changing what is already there
 
@@ -70,25 +95,39 @@ When and only when you are drawing, end your message with a fenced json block:
 ```json
 {
   "action": "draw",
-  "direction": "down",
-  "nodes": [
-    {"id": "a", "label": "Lead arrives", "shape": "ellipse", "fill": "#d3f9d8"},
-    {"id": "b", "label": "Qualified?", "shape": "diamond"}
+  "direction": "right",
+  "groups": [
+    {"label": "Indexing", "nodes": ["src", "chunk"]},
+    {"label": "Serving", "nodes": ["ask", "answer"]}
   ],
-  "edges": [{"from": "a", "to": "b", "label": "yes"}],
+  "nodes": [
+    {"id": "src", "label": "Data sources", "shape": "ellipse", "fill": "#e5dbff"},
+    {"id": "chunk", "label": "Chunk & embed", "fill": "#dbeafe"},
+    {"id": "ask", "label": "Relevant?", "shape": "diamond", "fill": "#fff3bf"},
+    {"id": "answer", "label": "Answer", "shape": "ellipse", "fill": "#d3f9d8"}
+  ],
+  "edges": [
+    {"from": "src", "to": "chunk"},
+    {"from": "chunk", "to": "ask"},
+    {"from": "ask", "to": "answer", "label": "yes"},
+    {"from": "ask", "to": "chunk", "label": "no", "dashed": true}
+  ],
   "delete": ["existing-element-id"],
   "update": [{"id": "existing-element-id", "label": "New label", "fill": "#ffc9c9"}]
 }
 ```
 
-- `nodes`/`edges` draw something new. Shapes: rectangle, ellipse, diamond. \
-`fill`, `stroke` and `text_color` are hex, and optional.
+- `groups` draws a titled lane behind its members. Use them for anything with \
+stages; every node should belong to a lane once there are more than about six.
+- Shapes: rectangle, ellipse, diamond. `fill`, `stroke` and `text_color` are \
+hex and optional.
 - `delete` removes elements by the ids you were shown. Deleting and redrawing \
 is how you restructure something.
 - `update` changes an existing element's `label`, `fill`, `stroke` or \
 `text_color` — use it for recolouring and renaming rather than redrawing.
+- Edges: `"dashed": true` for an optional or retry path, `"thick": true` for \
+the main line.
 - Every field is optional except `action`. Send only what changes.
-- Edge labels: "yes"/"no" on decisions. `"dashed": true` for a weak link.
 
 Nothing outside the block is parsed, so explain yourself in prose as usual."""
 
@@ -282,6 +321,26 @@ def _clean_edges(raw: Any, known: set[str]) -> list[dict]:
     return edges
 
 
+def _clean_groups(raw: Any, known: set[str]) -> list[dict]:
+    groups = []
+    for item in raw or []:
+        if not isinstance(item, dict):
+            continue
+        members = [
+            str(member)
+            for member in (item.get("nodes") or [])
+            if str(member) in known
+        ]
+        if not members:
+            continue
+        group = {"label": str(item.get("label") or ""), "nodes": members}
+        color = _color(item.get("color"))
+        if color:
+            group["color"] = color
+        groups.append(group)
+    return groups
+
+
 def _clean_updates(raw: Any, allowed: set[str] | None) -> list[dict]:
     updates = []
     for item in raw or []:
@@ -321,7 +380,9 @@ def compile_action(
     allowed = selected if selected else (on_board or None)
 
     nodes = _clean_nodes(action.get("nodes"))
-    edges = _clean_edges(action.get("edges"), {node["id"] for node in nodes})
+    node_ids = {node["id"] for node in nodes}
+    edges = _clean_edges(action.get("edges"), node_ids)
+    groups = _clean_groups(action.get("groups"), node_ids)
     updates = _clean_updates(action.get("update"), allowed)
     deletes = [
         str(item)
@@ -336,6 +397,7 @@ def compile_action(
             edges,
             str(action.get("direction") or "down"),
             merged_defaults(defaults),
+            groups,
         )
         if nodes
         else []
@@ -350,6 +412,7 @@ def compile_action(
         "delete_ids": deletes,
         "summary": {
             "created": len(nodes),
+            "grouped": len(groups),
             "connected": len(edges),
             "updated": len(updates),
             "deleted": len(deletes),

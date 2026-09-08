@@ -97,7 +97,13 @@ TOOLS = [
             "Boxes are laid out in layers, labels are bound to their box, and arrows "
             "are bound to the shapes they connect, so the result stays editable. "
             "Prefer this over create_mermaid_diagram when you are composing the "
-            "diagram yourself."
+            "diagram yourself.\n\n"
+            "To make it readable: group nodes into named lanes once there are more "
+            "than about six (a flat chain of a dozen boxes reads badly at any "
+            "zoom); ellipse for start/end, rectangle for an action, diamond for a "
+            "decision phrased as a question; at most four fills, each meaning a "
+            "category or state, pale with dark text; label every edge leaving a "
+            "decision; left-to-right for pipelines, top-down for decision trees."
         ),
         "inputSchema": {
             "type": "object",
@@ -110,6 +116,22 @@ TOOLS = [
                     "type": "string",
                     "enum": ["down", "up", "right", "left"],
                     "default": "down",
+                },
+                "groups": {
+                    "type": "array",
+                    "description": (
+                        "Named lanes drawn as titled regions behind their members "
+                        "— Ingest/Retrieve/Generate, Client/Service/Storage. Use "
+                        "them for anything with stages."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "required": ["label", "nodes"],
+                        "properties": {
+                            "label": {"type": "string"},
+                            "nodes": {"type": "array", "items": {"type": "string"}},
+                        },
+                    },
                 },
             },
         },
@@ -275,6 +297,7 @@ def _call_tool(name: str, args: dict, ctx: McpContext, db: Session) -> dict:
             edges,
             str(args.get("direction") or "down"),
             _user_defaults(db, ctx.user_id),
+            args.get("groups") or None,
         )
         drawing = _save(db, ctx, str(args.get("title") or "Flowchart"), elements)
         return _text(
