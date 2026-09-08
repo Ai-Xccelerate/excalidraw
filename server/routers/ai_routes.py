@@ -8,10 +8,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+import agent as canvas_agent
 import ai
 from auth import AuthContext, get_current_context
 from db import get_db
-from models import AIUsage
+from models import AIUsage, UserSettings
 
 router = APIRouter(prefix="/v1/ai", tags=["ai"])
 
@@ -65,6 +66,32 @@ class Message(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[Message] = []
+
+
+class AgentMessage(BaseModel):
+    role: str
+    content: str = ""
+    # data URLs, pasted or attached alongside the text
+    images: list[str] = []
+
+
+class Attachment(BaseModel):
+    name: str = "document"
+    text: str = ""
+
+
+class BoardState(BaseModel):
+    """What the canvas looks like right now. Sent every turn rather than kept
+    server-side: the board is the user's, and it changes while they talk."""
+
+    elements: list[dict] = []
+    selected_ids: list[str] = []
+
+
+class AgentRequest(BaseModel):
+    messages: list[AgentMessage] = []
+    board: BoardState | None = None
+    attachments: list[Attachment] = []
 
 
 def _today() -> str:
@@ -146,6 +173,56 @@ async def diagram_to_code(
         ) from exc
 
     return {"html": _extract_html(raw)}
+
+
+@router.post("/canvas-agent")
+async def canvas_agent(
+    body: AgentRequest,
+    response: Response,
+    ctx: AuthContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+):
+    """One turn of the canvas conversation.
+
+    Stateless on purpose: the client owns the transcript and the board, and
+    sends both. That keeps the agent honest about what is actually on the
+    canvas — including edits the user made by hand between messages."""
+    if not ai.is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail={"statusCode": 503, "message": "The AI backend is not configured yet."},
+        )
+    if not body.messages:
+        raise HTTPException(status_code=400, detail="Nothing to answer")
+
+    limit, remaining = _consume_quota(db, ctx.user_id, "agent")
+    response.headers["X-Ratelimit-Limit"] = str(limit)
+    response.headers["X-Ratelimit-Remaining"] = str(remaining)
+
+    board = body.board.model_dump() if body.board else None
+    messages = canvas_agent.build_messages(
+        [message.model_dump() for message in body.messages],
+        board,
+        [attachment.model_dump() for attachment in body.attachments],
+    )
+
+    try:
+        raw = await ai.complete(messages)
+    except ai.AIUnavailable as exc:
+        raise HTTPException(
+            status_code=exc.status, detail={"statusCode": exc.status, "message": str(exc)}
+        ) from exc
+
+    reply, action = canvas_agent.split_action(raw)
+
+    operations = None
+    if action:
+        settings = db.get(UserSettings, ctx.user_id)
+        operations = canvas_agent.compile_action(
+            action, settings.editor_defaults if settings else None, board
+        )
+
+    return {"reply": reply, "operations": operations}
 
 
 @router.post("/text-to-diagram/chat-streaming")

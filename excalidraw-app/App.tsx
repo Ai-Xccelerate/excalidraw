@@ -156,6 +156,7 @@ import DebugCanvas, {
   loadSavedDebugState,
 } from "./components/DebugCanvas";
 import { AIComponents } from "./components/AI";
+import { AgentPanel } from "./agent/AgentPanel";
 import { ExcalidrawPlusIframeExport } from "./ExcalidrawPlusIframeExport";
 
 import "./index.scss";
@@ -163,6 +164,22 @@ import "./index.scss";
 import type { CollabAPI } from "./collab/Collab";
 
 polyfill();
+
+const sparkleIcon = (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z" />
+    <path d="M18 15l.8 2L21 17.8l-2.2.8L18 21l-.8-2.4-2.2-.8 2.2-.8L18 15z" />
+  </svg>
+);
 
 window.EXCALIDRAW_THROTTLE_RENDER = true;
 
@@ -903,6 +920,7 @@ const ExcalidrawWrapper = () => {
     }
   };
 
+  const [agentOpen, setAgentOpen] = useState(false);
   const [latestShareableLink, setLatestShareableLink] = useState<string | null>(
     null,
   );
@@ -1096,20 +1114,39 @@ const ExcalidrawWrapper = () => {
         onThemeChange={setAppTheme}
         aiEnabled={false}
         renderTopRightUI={(isMobile) => {
-          if (isMobile || !collabAPI || isCollabDisabled) {
+          if (isMobile) {
             return null;
           }
 
           return (
             <div className="excalidraw-ui-top-right">
-              {collabError.message && <CollabError collabError={collabError} />}
-              <LiveCollaborationTrigger
-                isCollaborating={isCollaborating}
-                onSelect={() =>
-                  setShareDialogState({ isOpen: true, type: "share" })
-                }
-                editorInterface={editorInterface}
-              />
+              {AUTH_ENABLED && excalidrawAPI && (
+                <button
+                  className={clsx("aix-agent-trigger", {
+                    "aix-agent-trigger--on": agentOpen,
+                  })}
+                  title="Canvas assistant"
+                  aria-label="Canvas assistant"
+                  aria-pressed={agentOpen}
+                  onClick={() => setAgentOpen((open) => !open)}
+                >
+                  {sparkleIcon}
+                </button>
+              )}
+              {collabAPI && !isCollabDisabled && (
+                <>
+                  {collabError.message && (
+                    <CollabError collabError={collabError} />
+                  )}
+                  <LiveCollaborationTrigger
+                    isCollaborating={isCollaborating}
+                    onSelect={() =>
+                      setShareDialogState({ isOpen: true, type: "share" })
+                    }
+                    editorInterface={editorInterface}
+                  />
+                </>
+              )}
             </div>
           );
         }}
@@ -1142,6 +1179,12 @@ const ExcalidrawWrapper = () => {
         </OverwriteConfirmDialog>
         <AppFooter onChange={() => excalidrawAPI?.refresh()} />
         {excalidrawAPI && <AIComponents excalidrawAPI={excalidrawAPI} />}
+        {AUTH_ENABLED && agentOpen && excalidrawAPI && (
+          <AgentPanel
+            excalidrawAPI={excalidrawAPI}
+            onClose={() => setAgentOpen(false)}
+          />
+        )}
 
         <TTDDialogTrigger />
         {isCollaborating && isOffline && (

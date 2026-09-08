@@ -66,6 +66,10 @@ const TTDDialogBase = withInternalFallback(
     | { __fallback: true }
   )) => {
     const app = useApp();
+    // with the AI features off there is only one thing this dialog does, so it
+    // shows the mermaid pane under its own title rather than a lone tab
+    const showTextToDiagram =
+      app.props.aiEnabled !== false && !("__fallback" in rest);
 
     const [mermaidToExcalidrawLib, setMermaidToExcalidrawLib] =
       useState<MermaidToExcalidrawLibProps>({
@@ -92,10 +96,8 @@ const TTDDialogBase = withInternalFallback(
         {...rest}
         autofocus={false}
       >
-        <TTDDialogTabs dialog="ttd" tab={tab}>
-          {"__fallback" in rest && rest.__fallback ? (
-            <p className="dialog-mermaid-title">{t("mermaid.title")}</p>
-          ) : (
+        <TTDDialogTabs dialog="ttd" tab={showTextToDiagram ? tab : "mermaid"}>
+          {showTextToDiagram ? (
             <TTDDialogTabTriggers>
               <TTDDialogTabTrigger tab="text-to-diagram">
                 <div className="ttd-dialog-tab-trigger__content">
@@ -109,9 +111,11 @@ const TTDDialogBase = withInternalFallback(
                 {t("mermaid.label")}
               </TTDDialogTabTrigger>
             </TTDDialogTabTriggers>
+          ) : (
+            <p className="dialog-mermaid-title">{t("mermaid.title")}</p>
           )}
 
-          {!("__fallback" in rest) && (
+          {showTextToDiagram && !("__fallback" in rest) && (
             <TTDDialogTab className="ttd-dialog-content" tab="text-to-diagram">
               <TextToDiagram
                 mermaidToExcalidrawLib={mermaidToExcalidrawLib}

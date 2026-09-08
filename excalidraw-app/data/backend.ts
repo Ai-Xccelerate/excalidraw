@@ -521,3 +521,44 @@ export const approveOAuthRequest = (params: {
     method: "POST",
     body: JSON.stringify(params),
   });
+
+// ------------------------------------------------------------ canvas agent
+
+export type AgentTurn = {
+  role: "user" | "assistant";
+  content: string;
+  images?: string[];
+};
+
+export type AgentOperations = {
+  elements: any[];
+  updates: {
+    id: string;
+    label?: string;
+    backgroundColor?: string;
+    strokeColor?: string;
+    textColor?: string;
+  }[];
+  delete_ids: string[];
+  summary: {
+    created: number;
+    connected: number;
+    updated: number;
+    deleted: number;
+  };
+};
+
+export type AgentReply = {
+  reply: string;
+  operations: AgentOperations | null;
+};
+
+export const askCanvasAgent = (payload: {
+  messages: AgentTurn[];
+  board: { elements: any[]; selected_ids: string[] };
+  attachments: { name: string; text: string }[];
+}): Promise<AgentReply> =>
+  apiFetch("/v1/ai/canvas-agent", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });

@@ -219,6 +219,33 @@ $aix-title-font: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto,
   }
 }
 
+.aix-agent-trigger {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-lg);
+  background: var(--island-bg-color, #fff);
+  color: var(--color-on-surface, #1b1b1f);
+  cursor: pointer;
+  box-shadow: var(--shadow-island);
+
+  &:hover {
+    color: #ec7200;
+  }
+
+  &--on {
+    border-color: #ec7200;
+    background: #ec7200;
+    color: #fff;
+
+    &:hover {
+      color: #fff;
+    }
+  }
+}
+
 .aix-sign-in-button {
   display: flex;
   justify-content: center;

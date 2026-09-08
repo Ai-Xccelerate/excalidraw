@@ -139,8 +139,7 @@ export const parseShareLinkHash = (hash: string) => hash.match(RE_SHARE_LINK);
 
 /** A shareable link opens as a read-only copy for anyone who has it: it must
  * not need an account, and it must not touch the visitor's own scene. */
-export const isShareLinkView = () =>
-  RE_SHARE_LINK.test(window.location.hash);
+export const isShareLinkView = () => RE_SHARE_LINK.test(window.location.hash);
 
 export const isCollaborationLink = (link: string) => {
   const hash = new URL(link).hash;
