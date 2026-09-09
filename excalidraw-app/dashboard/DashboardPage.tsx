@@ -27,7 +27,9 @@ import {
 
 import "./DashboardPage.scss";
 
-const LOGO_LIGHT = "/aix-logo.png";
+const LOGO = "/logo.png";
+// the square mark, for places too small for the full lockup
+const LOGO_MARK = "/logo-mark.png";
 
 const settingsIcon = (
   <svg
@@ -346,7 +348,7 @@ const DrawingCard = ({
               : undefined
           }
         >
-          {!drawing.thumbnail && <img src={LOGO_LIGHT} alt="" aria-hidden />}
+          {!drawing.thumbnail && <img src={LOGO_MARK} alt="" aria-hidden />}
         </button>
         <div className="aix-row__name">{nameField}</div>
         <div className="aix-row__collection">
@@ -370,7 +372,7 @@ const DrawingCard = ({
             : undefined
         }
       >
-        {!drawing.thumbnail && <img src={LOGO_LIGHT} alt="" aria-hidden />}
+        {!drawing.thumbnail && <img src={LOGO_MARK} alt="" aria-hidden />}
         <span className="aix-card__age">
           {relativeTime(drawing.updated_at)}
         </span>
@@ -406,7 +408,7 @@ const TrashCard = ({
             : undefined
         }
       >
-        {!drawing.thumbnail && <img src={LOGO_LIGHT} alt="" aria-hidden />}
+        {!drawing.thumbnail && <img src={LOGO_MARK} alt="" aria-hidden />}
         {drawing.deleted_at && (
           <span className="aix-card__age">
             deleted {relativeTime(drawing.deleted_at)}
@@ -686,7 +688,11 @@ const DashboardShell = () => {
     <div className="aix-dashboard">
       <aside className="aix-sidebar">
         <div className="aix-sidebar__top">
-          <img className="aix-sidebar__logo" src={LOGO_LIGHT} alt="AIX Draw" />
+          <img
+            className="aix-sidebar__logo"
+            src={LOGO}
+            alt="draw.getdraw.app"
+          />
         </div>
 
         <nav className="aix-nav">
@@ -1095,7 +1101,7 @@ export const DashboardPage = () => (
     </SignedIn>
     <SignedOut>
       <div className="aix-signedout">
-        <img src={LOGO_LIGHT} alt="AIX Draw" />
+        <img src={LOGO} alt="draw.getdraw.app" />
         <p>Sign in to see your drawings and workspaces.</p>
         <button
           className="aix-start-btn"

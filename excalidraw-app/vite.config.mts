@@ -226,10 +226,10 @@ export default defineConfig(({ mode }) => {
           maximumFileSizeToCacheInBytes: 2.3 * 1024 ** 2, // 2.3MB
         },
         manifest: {
-          short_name: "AIX Draw",
-          name: "AIX Draw",
+          short_name: "draw.getdraw.app",
+          name: "draw.getdraw.app",
           description:
-            "AIX Draw is AI Xccelerate's collaborative whiteboard — sketch diagrams, map systems, and think through work together, then share it as a read-only link.",
+            "Sketch diagrams, map systems and think through work together — with an assistant that can see your canvas and draw with you.",
           icons: [
             {
               src: "android-chrome-192x192.png",

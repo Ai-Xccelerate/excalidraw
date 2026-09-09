@@ -37,14 +37,14 @@
     gap: 0.75rem;
 
     img {
-      // the asset is a wide wordmark, so pin the height and let the width
-      // follow — forcing it into a square renders it unreadably small
-      width: auto;
-      height: 1.5rem;
+      // the square mark, badged on white so it reads against the panel's
+      // colour; the name sits beside it as text
+      width: 2.5rem;
+      height: 2.5rem;
       object-fit: contain;
       background: #fff;
-      border-radius: 8px;
-      padding: 0.35rem 0.5rem;
+      border-radius: 10px;
+      padding: 0.3rem;
     }
 
     div {
@@ -114,8 +114,8 @@
 
   &__mark {
     width: auto;
-    height: 1.75rem;
-    max-width: 70%;
+    height: 2rem;
+    max-width: 80%;
     margin: 0 auto 0.5rem;
     object-fit: contain;
   }

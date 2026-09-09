@@ -584,9 +584,9 @@ const AgentsSection = ({
       <header>
         <h2>Agents &amp; MCP</h2>
         <p>
-          AIXDraw speaks MCP, so Claude, ChatGPT and any other agent that
-          supports it can list your drawings and draw diagrams for you — using
-          the defaults you set here.
+          draw.getdraw.app speaks MCP, so Claude, ChatGPT and any other agent
+          that supports it can list your drawings and draw diagrams for you —
+          using the defaults you set here.
         </p>
       </header>
 
@@ -613,7 +613,7 @@ const AgentsSection = ({
         </li>
         <li>
           Then ask for a drawing:{" "}
-          <em>"make a flowchart of our onboarding in AIXDraw"</em>.
+          <em>"make a flowchart of our onboarding in draw.getdraw.app"</em>.
         </li>
       </ol>
 

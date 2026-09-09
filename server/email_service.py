@@ -13,7 +13,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
-RESEND_FROM = os.environ.get("RESEND_FROM", "AIXDraw <noreply@aixccelerate.com>")
+RESEND_FROM = os.environ.get("RESEND_FROM", "draw.getdraw.app <noreply@aixccelerate.com>")
 APP_URL = os.environ.get("APP_URL", "").rstrip("/")
 
 
@@ -34,9 +34,9 @@ async def send_password_reset(to_email: str, token: str) -> bool:
                 json={
                     "from": RESEND_FROM,
                     "to": [to_email],
-                    "subject": "Reset your AIXDraw password",
+                    "subject": "Reset your draw.getdraw.app password",
                     "html": (
-                        "<p>Someone asked to reset the password for this AIXDraw "
+                        "<p>Someone asked to reset the password for this draw.getdraw.app "
                         "account. This link expires in one hour and can be used once.</p>"
                         f'<p><a href="{reset_url}">Reset your password</a></p>'
                         "<p>If that wasn't you, you can ignore this email — your "
@@ -83,9 +83,9 @@ async def send_email_verification(to_email: str, token: str) -> bool:
     url = f"{APP_URL}/verify-email?token={token}"
     return await _send(
         to_email,
-        "Verify your AIXDraw email",
+        "Verify your draw.getdraw.app email",
         (
-            "<p>Confirm this address to finish setting up your AIXDraw account. "
+            "<p>Confirm this address to finish setting up your draw.getdraw.app account. "
             "This link expires in 24 hours.</p>"
             f'<p><a href="{url}">Verify my email</a></p>'
             "<p>Until it's confirmed, any workspace or drawing invites sent to "
@@ -101,9 +101,9 @@ async def send_existing_account_notice(to_email: str) -> bool:
     real owner that it happened."""
     return await _send(
         to_email,
-        "You already have an AIXDraw account",
+        "You already have a draw.getdraw.app account",
         (
-            "<p>Someone just tried to create an AIXDraw account with this "
+            "<p>Someone just tried to create a draw.getdraw.app account with this "
             "address, but one already exists.</p>"
             f'<p>If that was you, <a href="{APP_URL}/login">sign in</a> instead, '
             f'or <a href="{APP_URL}/login">reset your password</a> if you\'ve '

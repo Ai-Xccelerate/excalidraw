@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["mcp"])
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "aixdraw", "title": "AIXDraw", "version": "1.0.0"}
+SERVER_INFO = {"name": "getdraw", "title": "draw.getdraw.app", "version": "1.0.0"}
 
 _NODE_SCHEMA = {
     "type": "object",
@@ -58,7 +58,7 @@ TOOLS = [
     {
         "name": "list_drawings",
         "title": "List drawings",
-        "description": "List the drawings in the user's AIXDraw account, newest first.",
+        "description": "List the drawings in the user's draw.getdraw.app account, newest first.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -140,7 +140,7 @@ TOOLS = [
         "name": "create_mermaid_diagram",
         "title": "Create a diagram from mermaid",
         "description": (
-            "Render a mermaid flowchart as a new AIXDraw drawing.\n\n"
+            "Render a mermaid flowchart as a new draw.getdraw.app drawing.\n\n"
             "Supported, so write the diagram you actually want:\n"
             "- `flowchart TD|TB|LR|RL|BT` and `graph` (TD is top-down, LR is "
             "left-to-right — prefer LR once a chart is more than ~6 levels deep, "
@@ -366,7 +366,7 @@ def _handle(message: dict, ctx: McpContext, db: Session) -> dict | None:
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": SERVER_INFO,
                 "instructions": (
-                    "Drawings live in the signed-in user's AIXDraw account.\n\n"
+                    "Drawings live in the signed-in user's draw.getdraw.app account.\n\n"
                     "Use create_mermaid_diagram when you already have mermaid "
                     "source, or create_flowchart to compose from nodes and edges. "
                     "Both lay the diagram out in layers, bind each label to its "

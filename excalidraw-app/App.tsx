@@ -1076,18 +1076,14 @@ const ExcalidrawWrapper = () => {
             title="Back to dashboard"
           >
             <img
-              src={
-                editorTheme === "dark" ? "/aix-logo-dark.png" : "/aix-logo.png"
-              }
+              src={editorTheme === "dark" ? "/logo-dark.png" : "/logo.png"}
               alt="AIX — back to dashboard"
               draggable={false}
             />
           </a>
         ) : (
           <img
-            src={
-              editorTheme === "dark" ? "/aix-logo-dark.png" : "/aix-logo.png"
-            }
+            src={editorTheme === "dark" ? "/logo-dark.png" : "/logo.png"}
             alt="AIX"
             className="aix-app-logo"
             draggable={false}

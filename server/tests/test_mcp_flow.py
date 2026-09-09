@@ -154,7 +154,7 @@ def rpc(method, params=None, rid=1):
 
 # 7. MCP handshake and tools
 init = rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})
-ok &= check("initialize returns serverInfo", init["result"]["serverInfo"]["name"] == "aixdraw", init)
+ok &= check("initialize returns serverInfo", init["result"]["serverInfo"]["name"] == "getdraw", init)
 tools = [t["name"] for t in rpc("tools/list")["result"]["tools"]]
 ok &= check("tools are listed", "create_mermaid_diagram" in tools, tools)
 
