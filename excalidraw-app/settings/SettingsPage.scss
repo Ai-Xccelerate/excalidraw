@@ -1,8 +1,12 @@
-$aix-orange: #ec7200;
-$ink: #1b1b1f;
-$muted: #8a8a94;
-$line: #ececf1;
-$hover: #f4f4f7;
+// getdraw.app brand tokens — mirrors getdraw-website/site/assets/styles.css
+$aix-orange: #ff6a00;
+$orange-deep: #de4f00;
+$yellow: #ffd84d;
+$ink: #0b0b0b;
+$muted: #675e52;
+$paper: #fffaf0;
+$line: rgba(11, 11, 11, 0.16);
+$hover: rgba(255, 216, 77, 0.42);
 
 .aix-settings {
   display: flex;
@@ -10,7 +14,10 @@ $hover: #f4f4f7;
   width: 100vw;
   font-family: "Figtree", "Assistant", system-ui, sans-serif;
   color: $ink;
-  background: #fbfbfd;
+  background-color: $paper;
+  background-image: linear-gradient(rgba(11, 11, 11, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11, 11, 11, 0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
 
   * {
     box-sizing: border-box;
@@ -23,8 +30,8 @@ $hover: #f4f4f7;
   &__nav {
     width: 268px;
     flex-shrink: 0;
-    border-right: 1px solid $line;
-    background: #fff;
+    border-right: 1.5px solid $line;
+    background: rgba(255, 255, 255, 0.92);
     padding: 18px 12px;
     display: flex;
     flex-direction: column;
@@ -47,9 +54,9 @@ $hover: #f4f4f7;
 
   &__title {
     margin: 4px 8px 10px;
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    font-size: 24px;
+    font-weight: 850;
+    letter-spacing: -0.045em;
   }
 
   &__navitem {
@@ -63,7 +70,7 @@ $hover: #f4f4f7;
     padding: 9px 12px;
     border-radius: 9px;
     cursor: pointer;
-    color: #45454d;
+    color: #4d463d;
 
     span {
       font-size: 14px;
@@ -81,12 +88,33 @@ $hover: #f4f4f7;
     }
 
     &--on {
-      background: rgba($aix-orange, 0.1);
-      color: $aix-orange;
+      background: $yellow;
+      color: $ink;
 
       small {
-        color: rgba($aix-orange, 0.75);
+        color: rgba(11, 11, 11, 0.65);
       }
+    }
+  }
+
+  &__docs {
+    display: inline-flex;
+    text-decoration: none;
+    align-items: center;
+    gap: 6px;
+    margin-top: auto;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    color: $muted;
+
+    &::after {
+      content: "↗";
+      font-size: 11px;
+    }
+
+    &:hover {
+      color: $orange-deep;
     }
   }
 
@@ -100,9 +128,10 @@ $hover: #f4f4f7;
   &__error {
     margin-bottom: 16px;
     padding: 10px 14px;
-    border-radius: 9px;
-    background: #fdecea;
-    color: #a32619;
+    border: 1.5px solid rgba(#a11212, 0.28);
+    border-radius: 12px;
+    background: #fdecec;
+    color: #a11212;
     font-size: 13px;
     cursor: pointer;
   }
@@ -116,7 +145,8 @@ $hover: #f4f4f7;
     background: $ink;
     color: #fff;
     font-size: 13px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+    font-weight: 700;
+    box-shadow: 3px 3px 0 $aix-orange;
   }
 
   &__loading {
@@ -146,8 +176,9 @@ $hover: #f4f4f7;
 
 .aix-panel {
   background: #fff;
-  border: 1px solid $line;
-  border-radius: 14px;
+  border: 1.5px solid $ink;
+  border-radius: 20px;
+  box-shadow: 4px 4px 0 rgba(11, 11, 11, 0.1);
   padding: 4px 20px 20px;
 
   header {
@@ -155,8 +186,9 @@ $hover: #f4f4f7;
 
     h2 {
       margin: 0 0 4px;
-      font-size: 17px;
-      font-weight: 700;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
     }
 
     p {
@@ -170,9 +202,10 @@ $hover: #f4f4f7;
 
   &__subhead {
     margin: 26px 0 10px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: $muted;
   }
@@ -222,9 +255,9 @@ $hover: #f4f4f7;
 .aix-input {
   width: 260px;
   max-width: 100%;
-  padding: 8px 11px;
-  border: 1px solid #d9d9e3;
-  border-radius: 8px;
+  padding: 8px 13px;
+  border: 1.5px solid rgba(11, 11, 11, 0.34);
+  border-radius: 10px;
   font-family: inherit;
   font-size: 13.5px;
   color: $ink;
@@ -233,11 +266,11 @@ $hover: #f4f4f7;
   &:focus-visible {
     outline: none;
     border-color: $aix-orange;
-    box-shadow: 0 0 0 3px rgba($aix-orange, 0.15);
+    box-shadow: 0 0 0 3px rgba($aix-orange, 0.18);
   }
 
   &:disabled {
-    background: #f7f7fa;
+    background: #f7f1e6;
     color: $muted;
   }
 }
@@ -246,8 +279,8 @@ $hover: #f4f4f7;
   width: 44px;
   height: 32px;
   padding: 2px;
-  border: 1px solid #d9d9e3;
-  border-radius: 8px;
+  border: 1.5px solid rgba(11, 11, 11, 0.34);
+  border-radius: 10px;
   background: #fff;
   cursor: pointer;
 }
@@ -256,17 +289,18 @@ $hover: #f4f4f7;
   display: flex;
   gap: 4px;
   padding: 3px;
-  border-radius: 10px;
-  background: #f4f4f7;
+  border: 1.5px solid $line;
+  border-radius: 999px;
+  background: #fff;
 
   &__item {
     border: none;
     background: transparent;
-    padding: 6px 11px;
-    border-radius: 7px;
+    padding: 6px 13px;
+    border-radius: 999px;
     font-size: 12.5px;
-    font-weight: 600;
-    color: #55555f;
+    font-weight: 700;
+    color: $muted;
     cursor: pointer;
     white-space: nowrap;
 
@@ -275,9 +309,8 @@ $hover: #f4f4f7;
     }
 
     &--on {
-      background: #fff;
-      color: $aix-orange;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      background: $yellow;
+      color: $ink;
     }
   }
 }
@@ -286,9 +319,9 @@ $hover: #f4f4f7;
   width: 40px;
   height: 23px;
   padding: 2px;
-  border: none;
+  border: 1.5px solid $line;
   border-radius: 999px;
-  background: #d9d9e3;
+  background: #ece4d5;
   cursor: pointer;
   transition: background 0.15s ease;
 
@@ -304,49 +337,55 @@ $hover: #f4f4f7;
 
   &--on {
     background: $aix-orange;
+    border-color: $ink;
 
     .aix-toggle__knob {
-      transform: translateX(17px);
+      transform: translateX(15px);
     }
   }
 }
 
 .aix-btn {
-  padding: 8px 15px;
-  border: 1px solid #d9d9e3;
-  border-radius: 9px;
+  padding: 8px 17px;
+  border: 1.5px solid $line;
+  border-radius: 999px;
   background: #fff;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   color: $ink;
   cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease;
 
   &:hover {
-    border-color: #c5c5d0;
+    border-color: $ink;
   }
 
   &--primary {
-    border-color: transparent;
+    border-color: $ink;
     background: $aix-orange;
-    color: #fff;
+    color: $ink;
+    box-shadow: 3px 3px 0 $ink;
 
     &:hover {
-      background: #d66700;
+      background: $yellow;
+      transform: translateY(-2px);
     }
 
     &:disabled {
-      background: #e6e6ec;
+      background: #ece4d5;
       color: $muted;
+      box-shadow: none;
+      transform: none;
       cursor: not-allowed;
     }
   }
 
   &--danger {
-    color: #a32619;
+    color: #a11212;
 
     &:hover {
-      border-color: #e7b4ae;
-      background: #fdf3f2;
+      border-color: rgba(#a11212, 0.4);
+      background: #fdecec;
     }
   }
 }
@@ -357,14 +396,15 @@ $hover: #f4f4f7;
   gap: 10px;
   margin-top: 8px;
   padding: 12px 14px;
-  border: 1px solid $line;
-  border-radius: 10px;
-  background: #fafafc;
+  border: 1.5px solid $line;
+  border-radius: 12px;
+  background: #fff7e4;
 
   &__label {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     color: $muted;
   }
@@ -385,7 +425,7 @@ $hover: #f4f4f7;
   padding-left: 20px;
   font-size: 13px;
   line-height: 1.7;
-  color: #45454d;
+  color: #4d463d;
 
   em {
     color: $ink;
@@ -395,8 +435,8 @@ $hover: #f4f4f7;
 .aix-empty {
   margin: 0;
   padding: 16px;
-  border: 1px dashed #dcdce4;
-  border-radius: 10px;
+  border: 1.5px dashed rgba(11, 11, 11, 0.24);
+  border-radius: 12px;
   font-size: 13px;
   line-height: 1.5;
   color: $muted;
@@ -417,8 +457,8 @@ $hover: #f4f4f7;
   justify-content: space-between;
   gap: 16px;
   padding: 12px 14px;
-  border: 1px solid $line;
-  border-radius: 10px;
+  border: 1.5px solid $line;
+  border-radius: 12px;
 
   &__identity {
     display: flex;

@@ -19,6 +19,8 @@ import "./SettingsPage.scss";
 
 type SectionId = "profile" | "password" | "notifications" | "editor" | "agents";
 
+const DOCS_URL = "https://wiki.aiworkforce.md/docs/getdraw";
+
 const SECTIONS: { id: SectionId; label: string; blurb: string }[] = [
   { id: "profile", label: "Profile", blurb: "Your name and account address" },
   {
@@ -254,6 +256,15 @@ const SettingsPage = () => {
             </button>
           ))}
         </nav>
+
+        <a
+          className="aix-settings__docs"
+          href={DOCS_URL}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Docs
+        </a>
       </aside>
 
       <main className="aix-settings__body">
@@ -584,9 +595,9 @@ const AgentsSection = ({
       <header>
         <h2>Agents &amp; MCP</h2>
         <p>
-          draw.getdraw.app speaks MCP, so Claude, ChatGPT and any other agent
-          that supports it can list your drawings and draw diagrams for you —
-          using the defaults you set here.
+          getdraw.app speaks MCP, so Claude, ChatGPT and any other agent that
+          supports it can list your drawings and draw diagrams for you — using
+          the defaults you set here.
         </p>
       </header>
 
@@ -613,7 +624,7 @@ const AgentsSection = ({
         </li>
         <li>
           Then ask for a drawing:{" "}
-          <em>"make a flowchart of our onboarding in draw.getdraw.app"</em>.
+          <em>"make a flowchart of our onboarding in getdraw.app"</em>.
         </li>
       </ol>
 

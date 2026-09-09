@@ -28,6 +28,7 @@ import {
 import "./DashboardPage.scss";
 
 const LOGO = "/logo-mark.png";
+const DOCS_URL = "https://wiki.aiworkforce.md/docs/getdraw";
 
 const settingsIcon = (
   <svg
@@ -686,11 +687,7 @@ const DashboardShell = () => {
     <div className="aix-dashboard">
       <aside className="aix-sidebar">
         <div className="aix-sidebar__top">
-          <img
-            className="aix-sidebar__logo"
-            src={LOGO}
-            alt="draw.getdraw.app"
-          />
+          <img className="aix-sidebar__logo" src={LOGO} alt="getdraw.app" />
         </div>
 
         <nav className="aix-nav">
@@ -826,6 +823,15 @@ const DashboardShell = () => {
               </button>
             </div>
           </div>
+
+          <a
+            className="aix-sidebar__docs"
+            href={DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Docs
+          </a>
         </div>
       </aside>
 
@@ -1099,7 +1105,7 @@ export const DashboardPage = () => (
     </SignedIn>
     <SignedOut>
       <div className="aix-signedout">
-        <img src={LOGO} alt="draw.getdraw.app" />
+        <img src={LOGO} alt="getdraw.app" />
         <p>Sign in to see your drawings and workspaces.</p>
         <button
           className="aix-start-btn"
