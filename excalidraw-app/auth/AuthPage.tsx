@@ -120,11 +120,7 @@ export const AuthPage = ({
     <div className="aix-auth">
       <aside className="aix-auth__panel">
         <div className="aix-auth__brand">
-          <img src="/logo-mark.png" alt="" aria-hidden="true" />
-          <div>
-            <strong>draw.getdraw.app</strong>
-            <span>AI Xccelerate</span>
-          </div>
+          <img src="/logo-mark.png" alt="draw.getdraw.app" />
         </div>
         <div className="aix-auth__pitch">
           <h2>
@@ -148,7 +144,7 @@ export const AuthPage = ({
         <form className="aix-auth__card" onSubmit={onSubmit}>
           <img
             className="aix-auth__mark"
-            src="/logo.png"
+            src="/logo-mark.png"
             alt="draw.getdraw.app"
           />
           <h1 className="aix-auth__title">{copy.title}</h1>

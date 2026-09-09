@@ -153,7 +153,9 @@
 
 .aix-app-logo {
   display: block; // avoids the inline-image baseline gap throwing off centering
-  height: 1.75rem;
+  // the mark is square, so it can fill the toolbar band rather than sitting
+  // as a thin strip the way the old wordmark did
+  height: 2rem;
   width: auto;
   pointer-events: none;
   user-select: none;
@@ -166,7 +168,7 @@
 
     img {
       display: block;
-      height: 1.75rem;
+      height: 2rem;
       width: auto;
       user-select: none;
     }

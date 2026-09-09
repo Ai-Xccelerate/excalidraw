@@ -81,7 +81,7 @@ const OAuthConsentPage = () => {
       <div className="aix-consent__card">
         <img
           className="aix-consent__logo"
-          src="/logo.png"
+          src="/logo-mark.png"
           alt="draw.getdraw.app"
         />
 

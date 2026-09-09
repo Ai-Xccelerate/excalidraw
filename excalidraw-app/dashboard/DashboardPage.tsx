@@ -27,9 +27,7 @@ import {
 
 import "./DashboardPage.scss";
 
-const LOGO = "/logo.png";
-// the square mark, for places too small for the full lockup
-const LOGO_MARK = "/logo-mark.png";
+const LOGO = "/logo-mark.png";
 
 const settingsIcon = (
   <svg
@@ -348,7 +346,7 @@ const DrawingCard = ({
               : undefined
           }
         >
-          {!drawing.thumbnail && <img src={LOGO_MARK} alt="" aria-hidden />}
+          {!drawing.thumbnail && <img src={LOGO} alt="" aria-hidden />}
         </button>
         <div className="aix-row__name">{nameField}</div>
         <div className="aix-row__collection">
@@ -372,7 +370,7 @@ const DrawingCard = ({
             : undefined
         }
       >
-        {!drawing.thumbnail && <img src={LOGO_MARK} alt="" aria-hidden />}
+        {!drawing.thumbnail && <img src={LOGO} alt="" aria-hidden />}
         <span className="aix-card__age">
           {relativeTime(drawing.updated_at)}
         </span>
@@ -408,7 +406,7 @@ const TrashCard = ({
             : undefined
         }
       >
-        {!drawing.thumbnail && <img src={LOGO_MARK} alt="" aria-hidden />}
+        {!drawing.thumbnail && <img src={LOGO} alt="" aria-hidden />}
         {drawing.deleted_at && (
           <span className="aix-card__age">
             deleted {relativeTime(drawing.deleted_at)}

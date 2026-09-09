@@ -37,30 +37,14 @@
     gap: 0.75rem;
 
     img {
-      // the square mark, badged on white so it reads against the panel's
-      // colour; the name sits beside it as text
-      width: 2.5rem;
-      height: 2.5rem;
+      // standing alone now, so it carries the panel: badged on white to read
+      // against the panel's colour
+      width: 3.5rem;
+      height: 3.5rem;
       object-fit: contain;
       background: #fff;
-      border-radius: 10px;
-      padding: 0.3rem;
-    }
-
-    div {
-      display: flex;
-      flex-direction: column;
-      line-height: 1.2;
-    }
-
-    strong {
-      font-size: 1rem;
-      font-weight: 600;
-    }
-
-    span {
-      font-size: 0.75rem;
-      opacity: 0.85;
+      border-radius: 14px;
+      padding: 0.4rem;
     }
   }
 
@@ -114,7 +98,7 @@
 
   &__mark {
     width: auto;
-    height: 2rem;
+    height: 3.5rem;
     max-width: 80%;
     margin: 0 auto 0.5rem;
     object-fit: contain;
