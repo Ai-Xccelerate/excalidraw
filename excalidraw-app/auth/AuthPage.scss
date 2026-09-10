@@ -1,29 +1,45 @@
 .aix-auth {
-  --aix-orange: #ec7200;
-  --aix-ink: #1c1c1e;
+  --aix-orange: #ff6a00;
+  --aix-yellow: #ffd84d;
+  --aix-paper: #fffaf0;
+  --aix-muted: #675e52;
+  --aix-ink: #0b0b0b;
 
   display: grid;
-  grid-template-columns: minmax(0, 22rem) 1fr;
+  grid-template-columns: minmax(20rem, 25rem) 1fr;
   min-height: 100vh;
   // set explicitly: this screen renders outside the editor's font scope, so
   // without it everything inherits the browser default and comes out serif
   font-family: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto,
     sans-serif;
   color: var(--aix-ink);
-  background: #fff;
+  background: var(--aix-paper);
 
   @media (max-width: 900px) {
     grid-template-columns: 1fr;
   }
 
   &__panel {
+    position: relative;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     gap: 2rem;
-    padding: 2rem;
+    padding: 2.25rem;
     color: #fff;
-    background: var(--aix-orange);
+    background: var(--aix-ink);
+
+    &::after {
+      position: absolute;
+      right: -7rem;
+      bottom: 12%;
+      width: 17rem;
+      height: 17rem;
+      border-radius: 50%;
+      content: "";
+      background: var(--aix-orange);
+    }
 
     @media (max-width: 900px) {
       // the pitch is decoration; on a phone the form is what matters
@@ -32,9 +48,17 @@
   }
 
   &__brand {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 0.75rem;
+
+    span {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
 
     img {
       // standing alone now, so it carries the panel: badged on white to read
@@ -43,65 +67,115 @@
       height: 3.5rem;
       object-fit: contain;
       background: #fff;
-      border-radius: 14px;
+      border-radius: 13px;
       padding: 0.4rem;
     }
   }
 
   &__pitch {
+    position: relative;
+    z-index: 1;
+
     h2 {
       margin: 0 0 0.75rem;
-      font-size: 2rem;
-      font-weight: 700;
-      line-height: 1.15;
-      letter-spacing: -0.02em;
+      font-size: clamp(2.9rem, 4vw, 4.4rem);
+      font-weight: 850;
+      line-height: 0.92;
+      letter-spacing: -0.065em;
+
+      &::after {
+        display: block;
+        width: 5.5rem;
+        height: 0.5rem;
+        margin-top: 1.25rem;
+        content: "";
+        background: var(--aix-yellow);
+        transform: rotate(-2deg);
+      }
     }
 
     p {
       margin: 0;
-      font-size: 0.875rem;
-      line-height: 1.5;
-      opacity: 0.9;
+      max-width: 18rem;
+      color: #eee7dc;
+      font-size: 0.95rem;
+      line-height: 1.6;
     }
   }
 
   &__panel-footer {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
     font-size: 0.75rem;
-    opacity: 0.85;
+    color: var(--aix-yellow);
+    font-weight: 700;
   }
 
   &__stage {
+    position: relative;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 1rem;
     padding: 2rem 1.5rem;
-    background: linear-gradient(180deg, #f7f8fa 0%, #eef0f4 100%);
+    background-color: var(--aix-paper);
+    background-image: linear-gradient(
+        rgba(11, 11, 11, 0.045) 1px,
+        transparent 1px
+      ),
+      linear-gradient(90deg, rgba(11, 11, 11, 0.045) 1px, transparent 1px);
+    background-size: 28px 28px;
+
+    &::before {
+      position: absolute;
+      top: -9rem;
+      right: -7rem;
+      width: 24rem;
+      height: 24rem;
+      border-radius: 50%;
+      content: "";
+      background: var(--aix-yellow);
+    }
   }
 
   &__card {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     width: 100%;
-    max-width: 23rem;
-    padding: 2rem;
+    max-width: 27rem;
+    padding: 2.35rem;
     background: #fff;
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 14px;
-    box-shadow: 0 12px 32px rgba(16, 24, 40, 0.08);
+    border: 2px solid var(--aix-ink);
+    border-radius: 24px;
+    box-shadow: 10px 10px 0 var(--aix-orange), 0 24px 70px rgba(19, 12, 4, 0.14);
   }
 
-  &__mark {
-    width: auto;
-    height: 3.5rem;
-    max-width: 80%;
-    margin: 0 auto 0.5rem;
-    object-fit: contain;
+  &__card-brand {
+    display: flex;
+    gap: 0.7rem;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 0.65rem;
+
+    img {
+      width: 3.5rem;
+      height: 3.5rem;
+      object-fit: contain;
+    }
+
+    span {
+      font-size: 1.15rem;
+      font-weight: 850;
+      letter-spacing: -0.045em;
+    }
   }
 
   input,
@@ -112,15 +186,16 @@
 
   &__title {
     margin: 0;
-    font-size: 1.125rem;
-    font-weight: 600;
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: -0.035em;
     text-align: center;
   }
 
   &__subtitle {
     margin: 0 0 0.5rem;
     font-size: 0.8125rem;
-    color: #6b7280;
+    color: var(--aix-muted);
     text-align: center;
   }
 
@@ -132,13 +207,14 @@
     font-weight: 500;
 
     input {
-      padding: 0.6rem 0.75rem;
+      min-height: 3rem;
+      padding: 0.7rem 0.85rem;
       font-size: 0.875rem;
       font-weight: 400;
       color: var(--aix-ink);
       background: #fff;
-      border: 1px solid #d8dae0;
-      border-radius: 8px;
+      border: 1.5px solid rgba(11, 11, 11, 0.34);
+      border-radius: 10px;
 
       &::placeholder {
         color: #9ca3af;
@@ -154,17 +230,19 @@
 
   &__submit {
     margin-top: 0.25rem;
-    padding: 0.65rem 1rem;
+    min-height: 3rem;
+    padding: 0.7rem 1rem;
     font-size: 0.875rem;
     font-weight: 600;
-    color: #fff;
-    background: var(--aix-ink);
-    border: none;
-    border-radius: 8px;
+    color: var(--aix-ink);
+    background: var(--aix-orange);
+    border: 1.5px solid var(--aix-ink);
+    border-radius: 999px;
+    box-shadow: 3px 3px 0 var(--aix-ink);
     cursor: pointer;
 
     &:hover:not(:disabled) {
-      background: #000;
+      background: var(--aix-yellow);
     }
 
     &:disabled {
@@ -177,7 +255,7 @@
     align-self: center;
     padding: 0;
     font-size: 0.75rem;
-    color: #6b7280;
+    color: var(--aix-muted);
     background: none;
     border: none;
     cursor: pointer;
@@ -206,9 +284,11 @@
   }
 
   &__switch {
+    position: relative;
+    z-index: 1;
     margin: 0;
     font-size: 0.8125rem;
-    color: #6b7280;
+    color: var(--aix-muted);
 
     button {
       padding: 0;

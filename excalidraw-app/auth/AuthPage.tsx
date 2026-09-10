@@ -12,12 +12,12 @@ const describe = (error: unknown): string =>
 const COPY: Record<Mode, { title: string; subtitle: string; submit: string }> =
   {
     login: {
-      title: "Sign in to draw.getdraw.app",
+      title: "Sign in to getdraw.app",
       subtitle: "Welcome back! Please sign in to continue.",
       submit: "Continue",
     },
     signup: {
-      title: "Create your draw.getdraw.app account",
+      title: "Create your getdraw.app account",
       subtitle: "Start drawing in seconds.",
       submit: "Create account",
     },
@@ -120,7 +120,8 @@ export const AuthPage = ({
     <div className="aix-auth">
       <aside className="aix-auth__panel">
         <div className="aix-auth__brand">
-          <img src="/logo-mark.png" alt="draw.getdraw.app" />
+          <img src="/logo-mark.png" alt="" />
+          <span>getdraw.app</span>
         </div>
         <div className="aix-auth__pitch">
           <h2>
@@ -142,11 +143,10 @@ export const AuthPage = ({
 
       <main className="aix-auth__stage">
         <form className="aix-auth__card" onSubmit={onSubmit}>
-          <img
-            className="aix-auth__mark"
-            src="/logo-mark.png"
-            alt="draw.getdraw.app"
-          />
+          <div className="aix-auth__card-brand">
+            <img src="/logo-mark.png" alt="" />
+            <span>getdraw.app</span>
+          </div>
           <h1 className="aix-auth__title">{copy.title}</h1>
           <p className="aix-auth__subtitle">{copy.subtitle}</p>
 
