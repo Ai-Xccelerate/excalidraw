@@ -23,7 +23,7 @@ from diagrams import build_flowchart, merged_defaults
 MAX_DESCRIBED_ELEMENTS = 120
 MAX_LABEL_CHARS = 80
 
-SYSTEM = """You are the drawing partner inside draw.getdraw.app, a whiteboard app. You \
+SYSTEM = """You are the drawing partner inside getdraw.app, a whiteboard app. You \
 talk with the user about what they want to show, then draw it on their canvas.
 
 # How you work

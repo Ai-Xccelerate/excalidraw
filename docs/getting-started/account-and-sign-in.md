@@ -4,7 +4,7 @@ The drawing app uses an email address and password. You must verify your email a
 
 ## Create an account
 
-1. Open `draw.getdraw.app`.
+1. Open `login.getdraw.app`.
 2. Select **Sign up** below the sign-in form.
 3. Enter your email address and a password of at least eight characters.
 4. Select **Create account**.
@@ -15,7 +15,7 @@ The verification link expires after 24 hours. If the address already has an acco
 
 ## Sign in
 
-1. Open `draw.getdraw.app`.
+1. Open `login.getdraw.app`.
 2. Enter the verified email address and password.
 3. Select **Continue**.
 

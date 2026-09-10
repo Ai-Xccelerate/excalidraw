@@ -63,7 +63,7 @@ def _run_lightweight_migrations() -> None:
 
 _run_lightweight_migrations()
 
-app = FastAPI(title="draw.getdraw.app API")
+app = FastAPI(title="getdraw.app API")
 
 CORS_ORIGIN = os.environ.get("CORS_ORIGIN", "*")
 allow_origins = (

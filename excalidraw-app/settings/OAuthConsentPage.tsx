@@ -82,7 +82,7 @@ const OAuthConsentPage = () => {
         <img
           className="aix-consent__logo"
           src="/logo-mark.png"
-          alt="draw.getdraw.app"
+          alt="getdraw.app"
         />
 
         {error ? (
@@ -91,7 +91,7 @@ const OAuthConsentPage = () => {
             <p className="aix-consent__error">{error}</p>
             <div className="aix-consent__actions">
               <a className="aix-btn" href="/dashboard">
-                Back to draw.getdraw.app
+                Back to getdraw.app
               </a>
             </div>
           </>
@@ -101,7 +101,7 @@ const OAuthConsentPage = () => {
               Connect <strong>{client?.client_name ?? "an agent"}</strong>?
             </h1>
             <p className="aix-consent__lead">
-              It's asking to work with your draw.getdraw.app account as{" "}
+              It's asking to work with your getdraw.app account as{" "}
               <strong>{user?.email}</strong>.
             </p>
 

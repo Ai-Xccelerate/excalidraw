@@ -66,7 +66,7 @@ async def protected_resource_metadata(request: Request):
         "authorization_servers": [base],
         "scopes_supported": SUPPORTED_SCOPES,
         "bearer_methods_supported": ["header"],
-        "resource_name": "draw.getdraw.app",
+        "resource_name": "getdraw.app",
     }
 
 

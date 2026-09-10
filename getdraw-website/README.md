@@ -2,7 +2,7 @@
 
 This folder is the source-content package for the standalone marketing website planned for `www.getdraw.app`. It contains page hierarchy, production-ready draft copy, conversion paths, SEO metadata, and claim boundaries. It intentionally does not contain the website implementation.
 
-The signed-in product is currently addressed as `draw.getdraw.app`. Primary product calls to action should link there.
+The signed-in product is currently addressed as `login.getdraw.app`. Primary product calls to action should link there.
 
 ## Recommended navigation
 

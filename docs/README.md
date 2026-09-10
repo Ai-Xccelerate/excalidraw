@@ -1,6 +1,6 @@
 # getdraw.app user guide
 
-This guide explains the signed-in drawing application at `draw.getdraw.app`: how to create and manage an account, organize drawings, work on the canvas, use AI, collaborate, share work, and connect external AI agents.
+This guide explains the signed-in drawing application at `login.getdraw.app`: how to create and manage an account, organize drawings, work on the canvas, use AI, collaborate, share work, and connect external AI agents.
 
 ## Start here
 
@@ -47,7 +47,7 @@ This guide explains the signed-in drawing application at `draw.getdraw.app`: how
 ## Product naming
 
 - **getdraw.app** is the product and public website name.
-- **draw.getdraw.app** is the drawing application and the name shown in the current app interface.
+- **login.getdraw.app** is the sign-in address; the application itself is branded simply as **getdraw.app**.
 - A **drawing** is a saved canvas.
 - A **collection** is a folder-like group of drawings within your current personal or shared workspace.
 - A **workspace** is a scope containing drawings and collections. Every account has a personal workspace; shared workspaces appear when they are available to you.

@@ -226,8 +226,8 @@ export default defineConfig(({ mode }) => {
           maximumFileSizeToCacheInBytes: 2.3 * 1024 ** 2, // 2.3MB
         },
         manifest: {
-          short_name: "draw.getdraw.app",
-          name: "draw.getdraw.app",
+          short_name: "getdraw.app",
+          name: "getdraw.app",
           description:
             "Sketch diagrams, map systems and think through work together — with an assistant that can see your canvas and draw with you.",
           icons: [

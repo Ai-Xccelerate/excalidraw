@@ -3,7 +3,7 @@ title: "getdraw.app — Turn ideas into editable diagrams"
 description: "Draw, diagram, collaborate, and build with AI on one fast, editable canvas."
 route: "/"
 primary_cta: "Start drawing"
-primary_cta_url: "https://draw.getdraw.app"
+primary_cta_url: "https://login.getdraw.app"
 ---
 
 # Turn ideas into editable diagrams
